@@ -7,3 +7,8 @@ pub struct Data {
     pub z: f64,
     pub timestamp: SystemTime,
 }
+
+pub enum Telemetry {
+    Acceleration(Data),
+    Position(Data),
+}
