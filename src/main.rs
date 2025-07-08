@@ -5,8 +5,12 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
 
 use crate::data::Data;
+use crate::trajectory_generator::TrajectoryGenerator;
+use crate::input_generator::Imu;
 
 pub mod data;
+mod input_generator;
+mod trajectory_generator;
 
 fn generate_rnd_data() -> Data {
     let mut rng = rand::rng();
@@ -83,6 +87,9 @@ fn create_data_consumer(
 
 fn main() {
     println!("Hello RustSDF!");
+    let position_generator = Arc::new(Mutex::new(TrajectoryGenerator));
+    let (tx, rx) = mpsc::channel();
+    let imu = Imu::run(Arc::clone(&position_generator), tx);
 
     let consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Data>>>> =
         Arc::new(Mutex::new(HashMap::new()));
@@ -94,6 +101,9 @@ fn main() {
     data_source_handle.join().unwrap();
     consumer1_handle.join().unwrap();
     consumer0_handle.join().unwrap();
+    
+    drop(rx);
+    imu.join().unwrap();
 }
 
 #[cfg(test)]
