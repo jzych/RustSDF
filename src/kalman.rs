@@ -1,18 +1,33 @@
 #[allow(non_snake_case)]
 
-use nalgebra::{Const, Matrix3, Matrix3x6, Matrix6, Matrix6x3};
+use nalgebra::{Const, Matrix3, Matrix3x6, Matrix6, Matrix6x3, Matrix6x1, Matrix3x1};
 
-// matrixROWSxCOLUMNS
+use crate::data; 
 
-pub struct KalmanFilter {
-    A: nalgebra::Matrix6<f64>,
-    B: nalgebra::Matrix6x3<f64>,
-    H: nalgebra::Matrix3x6<f64>,
-    Q: nalgebra::Matrix6<f64>,
-    R: nalgebra::Matrix3<f64>,
-    
+pub struct KalmanData {
+    x: Matrix6x1<f64>,
+    P: Matrix6<f64>,
 }
 
+impl KalmanData {
+    pub fn new() -> Self{
+        Self {
+            x: Matrix6x1::zeros_generic(Const::<6>, Const::<1>),
+            P: Matrix6::zeros_generic(Const::<6>, Const::<6>),            
+        }
+    }
+}
+
+
+
+pub struct KalmanFilter {
+    A: Matrix6<f64>,
+    B: Matrix6x3<f64>,
+    H: Matrix3x6<f64>,
+    Q: Matrix6<f64>,
+    R: Matrix3<f64>,
+    
+}
 
 impl KalmanFilter {
 
@@ -32,6 +47,27 @@ impl KalmanFilter {
         println!("H: {}", self.H);
         println!("Q: {}", self.Q);
         println!("R: {}", self.R);
+    }
+
+    pub fn compute(&self, prev_state: KalmanData, input_acc: data::Data, input_gps: data::Data) -> KalmanData {
+        let u = Matrix3x1::new(input_acc.x, input_acc.y, input_acc.z);
+        let z = Matrix3x1::new(input_gps.x, input_gps.y, input_gps.z);
+
+        let mut state = KalmanData::new();
+
+        // prediction
+        state.x = self.A * prev_state.x + self.B * u;
+        state.P = self.A * prev_state.P * self.A.transpose() + self.Q;
+
+        // correction
+        let K = state.P * self.H.transpose() * (self.H * state.P * self.H.transpose() + self.R).try_inverse().unwrap();
+        state.x = state.x + K * (z - self.H * state.x);
+        state.P = (Matrix6::identity_generic(Const::<6>,Const::<6>) - K * self.H) * state.P;
+
+        println!("Current state estimate: {}", state.x);
+        println!("Current prob matrix: {}", state.P);
+
+        state
     }
 }
 
