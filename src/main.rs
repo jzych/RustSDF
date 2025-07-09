@@ -22,6 +22,7 @@ mod communication_registry;
 pub mod data;
 mod gps;
 mod imu;
+mod logger;
 mod trajectory_generator;
 mod kalman;
 

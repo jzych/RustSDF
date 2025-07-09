@@ -25,6 +25,8 @@ impl Default for Data {
     }
 }
 
+// #TODO remove warn allowance after usage of Position(Data) in GPS
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone)]
 pub enum Telemetry {
     Acceleration(Data),
