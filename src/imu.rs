@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct Imu {
     tx: Vec<Sender<Telemetry>>,
@@ -34,6 +34,7 @@ impl Imu {
     ) -> JoinHandle<()> {
         std::thread::spawn(move || {
             let mut imu = Imu::new(trajectory_generator, tx);
+            let mut start = Instant::now();
             while !shutdown.load(Ordering::SeqCst) {
                 let current_position = imu
                     .trajectory_generator
@@ -48,7 +49,9 @@ impl Imu {
                 if imu.tx.is_empty() {
                     break;
                 }
-                std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+
+                std::thread::sleep(get_cycle_duration(REFRESH_FREQ).saturating_sub(start.elapsed()));
+                start = Instant::now();
             }
         })
     }
