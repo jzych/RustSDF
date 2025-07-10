@@ -1,14 +1,21 @@
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
-use crate::data::{Telemetry, Data};
-use crate::imu::Imu;
-use crate::trajectory_generator::TrajectoryGenerator;
+use crate::{
+    data::{Data, Telemetry},
+    imu::Imu,
+    trajectory_generator::TrajectoryGenerator,
+};
 
 pub mod data;
+mod gps;
 mod imu;
 mod trajectory_generator;
 
@@ -90,7 +97,7 @@ fn main() {
     let consumer0_handle = create_data_consumer(Arc::clone(&consumer_registry));
     let consumer1_handle = create_data_consumer(Arc::clone(&consumer_registry));
     let data_source_handle = create_data_source(
-	Arc::clone(&generated_data_handle),
+        Arc::clone(&generated_data_handle),
         Arc::clone(&consumer_registry),
         Arc::clone(&shutdown_trigger),
     );
@@ -130,12 +137,12 @@ mod tests {
         let consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-	let (generated_data_handle, _) =
-        TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
         let (_id, rx) = register_new_consumer(Arc::clone(&consumer_registry));
 
         let test_producer_handle = create_data_source(
-		Arc::clone(&generated_data_handle),
+            Arc::clone(&generated_data_handle),
             Arc::clone(&consumer_registry),
             Arc::clone(&shutdown_trigger),
         );
