@@ -1,14 +1,16 @@
+use chrono::{DateTime, Local};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, Ordering},
+    sync::{mpsc, Arc, Mutex},
+    thread::{self, JoinHandle},
+    time::Duration,
+};
+
 use crate::data::{Telemetry, Data};
 use crate::imu::Imu;
 use crate::logger::get_data;
 use crate::trajectory_generator::TrajectoryGenerator;
-
-use chrono::{DateTime, Local};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
 mod data;
 mod imu;
