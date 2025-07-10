@@ -1,5 +1,5 @@
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -10,6 +10,7 @@ use crate::trajectory_generator::TrajectoryGenerator;
 use crate::input_generator::Imu;
 
 pub mod data;
+pub mod average;
 mod input_generator;
 mod trajectory_generator;
 
@@ -81,6 +82,34 @@ fn create_data_consumer(
     handle
 }
 
+fn create_data_consumer_avg_filter(
+    consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Data>>>>,
+) -> JoinHandle<()> {
+    let (id, input_rx) = register_new_consumer(Arc::clone(&consumer_registry));
+
+    let handle = thread::spawn(move || {
+        let mut buffer = VecDeque::new();
+        loop {
+            let new_data = match input_rx.recv() {
+                Ok(data) => data,
+                Err(_) => break,
+            };
+
+            println!(
+                "Average filter{}: received: {}, {}, {}",
+                id, new_data.x, new_data.y, new_data.z
+            );
+
+            average::handle_data_buffer(&mut buffer, new_data);
+            let avg_calc = average::calculate_average(&buffer);
+            let recv_handle = average::send_calculated_average(avg_calc);
+        }
+
+        deregister_consumer(id, consumer_registry);
+    });
+    handle
+}
+
 fn system_shutdown(
     consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Data>>>>,
     shutdown_trigger: Arc<AtomicBool>,
@@ -101,7 +130,7 @@ fn main() {
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
     let consumer0_handle = create_data_consumer(Arc::clone(&consumer_registry));
-    let consumer1_handle = create_data_consumer(Arc::clone(&consumer_registry));
+    let consumer1_handle = create_data_consumer_avg_filter(Arc::clone(&consumer_registry));
     let data_source_handle = create_data_source(
         Arc::clone(&consumer_registry),
         Arc::clone(&shutdown_trigger),

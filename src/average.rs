@@ -7,24 +7,24 @@ use crate::data::Data;
 
 //TODO: read only IMU data
 #[warn(while_true)]
-fn handle_average_thread(rx_input: mpsc::Receiver<Data>) {
-    thread::spawn(move || {
-        let mut buffer = VecDeque::new();
+// fn handle_average_thread(rx_input: mpsc::Receiver<Data>) {
+//     thread::spawn(move || {
+//         let mut buffer = VecDeque::new();
 
-        loop {
-            let new_data = match rx_input.recv() {
-                Ok(data) => data,
-                Err(_) => break,
-            };
+//         loop {
+//             let new_data = match rx_input.recv() {
+//                 Ok(data) => data,
+//                 Err(_) => break,
+//             };
 
-            handle_data_buffer(&mut buffer, new_data);
-            calculate_average(&buffer);
-            let recv_handle = send_calculated_average(new_data);
-        }
-    });
-}
+//             handle_data_buffer(&mut buffer, new_data);
+//             calculate_average(&buffer);
+//             let recv_handle = send_calculated_average(new_data);
+//         }
+//     });
+// }
 
-fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
+pub fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
     if buffer.len() < 10 {
         buffer.push_back(new_data);
     } else {
@@ -33,7 +33,7 @@ fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
     }
 }
 
-fn calculate_average(buffer: &VecDeque<Data>) -> Data {
+pub fn calculate_average(buffer: &VecDeque<Data>) -> Data {
     let buffer_iter = buffer.iter();
     let count = buffer.len();
     let mut sum_x: f64 = 0.0;
@@ -54,7 +54,8 @@ fn calculate_average(buffer: &VecDeque<Data>) -> Data {
     }
 }
 
-fn send_calculated_average(data: Data) -> mpsc::Receiver<Data> {
+pub fn send_calculated_average(data: Data) -> mpsc::Receiver<Data> {
+    println!("Average filter result: x = {}, y = {}, z = {}", data.x, data.y, data.z);
     let (sender, receiver) = mpsc::channel();
     sender.send(data).unwrap();
     receiver
