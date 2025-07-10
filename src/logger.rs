@@ -1,10 +1,10 @@
 use std::{
+    any::Any,
     collections::HashMap,
     fmt::Debug,
     sync::{mpsc, Arc, Mutex},
     thread,
     time::SystemTime,
-    any::Any,
 };
 
 use once_cell::sync::Lazy;
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn test_single_component_log() {
         log("test_component", "test message");
-        thread::sleep(Duration::from_millis(10)); 
+        thread::sleep(Duration::from_millis(10));
         let data = get_data::<&str>("test_component").unwrap();
         assert_eq!(data.len(), 1);
         assert_eq!(data[0].data, "test message");
@@ -104,7 +104,10 @@ mod tests {
     #[test]
     fn test_no_call_to_log_for_component() {
         let result = get_data::<String>("some_coponent");
-        assert!(result.is_none(), "Result shall be None when component has not logged anything");
+        assert!(
+            result.is_none(),
+            "Result shall be None when component has not logged anything"
+        );
     }
 
     #[test]
@@ -119,5 +122,4 @@ mod tests {
         assert_eq!(string_data[0].data, "string data");
         assert_eq!(number_data[0].data, 42);
     }
-
 }

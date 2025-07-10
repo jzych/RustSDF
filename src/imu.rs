@@ -42,7 +42,6 @@ impl Imu {
                 imu.prev_position = current_position;
                 log("Imu", acceleration);
 
-
                 imu.tx.retain(|tx| tx.send(acceleration).is_ok());
                 if imu.tx.is_empty() {
                     break;
