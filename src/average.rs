@@ -55,7 +55,10 @@ pub fn calculate_average(buffer: &VecDeque<Data>) -> Data {
 }
 
 pub fn send_calculated_average(data: Data) -> mpsc::Receiver<Data> {
-    println!("Average filter result: x = {}, y = {}, z = {}", data.x, data.y, data.z);
+    println!(
+        "Average filter result: x = {}, y = {}, z = {}",
+        data.x, data.y, data.z
+    );
     let (sender, receiver) = mpsc::channel();
     sender.send(data).unwrap();
     receiver
@@ -67,7 +70,10 @@ mod test {
     use std::collections::VecDeque;
     use std::time::SystemTime;
 
-    use crate::{average::calculate_average, data::{self, Data}};
+    use crate::{
+        average::{calculate_average, handle_data_buffer},
+        data::Data,
+    };
 
     #[test]
     fn test_calculate_average() {
@@ -101,5 +107,43 @@ mod test {
         assert!(calculate_average_output.y == local_avg_y);
         assert!(calculate_average_output.z == local_avg_z);
     }
- 
+
+    #[test]
+    fn test_handle_data_buffer() {
+        let mut buffer = VecDeque::new();
+        let data = Data {
+            x: 234.5,
+            y: 555.1,
+            z: 33.3,
+            timestamp: SystemTime::now(),
+        };
+
+        gen_vectors(2, &mut buffer);
+        handle_data_buffer(&mut buffer, data);
+        assert!(buffer.len() == 3);
+        assert!(buffer[2].x == data.x);
+
+        buffer.clear();
+        assert!(buffer.is_empty());
+
+        buffer.clear();
+        assert!(buffer.is_empty());
+
+        gen_vectors(10, &mut buffer);
+        handle_data_buffer(&mut buffer, data);
+        assert!(buffer.len() == 10);
+        assert!(buffer[9].x == data.x);
+    }
+
+    fn gen_vectors(vec_len: u8, buffer: &mut VecDeque<Data>) {
+        let mut rng = rand::rng();
+        for _ in 0..vec_len {
+            buffer.push_back(Data {
+                x: rng.random_range(0.0..=100.0),
+                y: rng.random_range(0.0..=100.0),
+                z: rng.random_range(0.0..=100.0),
+                timestamp: SystemTime::now(),
+            });
+        }
+    }
 }
