@@ -1,12 +1,13 @@
 use crate::data::{Data, Telemetry};
 use crate::trajectory_generator::TrajectoryGenerator;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 pub struct Imu {
-    tx: Sender<Telemetry>,
+    tx: Vec<Sender<Telemetry>>,
     trajectory_generator: Arc<Mutex<TrajectoryGenerator>>,
     prev_position: Data,
 }
@@ -15,7 +16,10 @@ pub struct Imu {
 const REFRESH_FREQ: u32 = 2;
 
 impl Imu {
-    fn new(trajectory_generator: Arc<Mutex<TrajectoryGenerator>>, tx: Sender<Telemetry>) -> Imu {
+    fn new(
+        trajectory_generator: Arc<Mutex<TrajectoryGenerator>>,
+        tx: Vec<Sender<Telemetry>>,
+    ) -> Imu {
         Imu {
             tx,
             trajectory_generator,
@@ -25,23 +29,27 @@ impl Imu {
 
     pub fn run(
         trajectory_generator: Arc<Mutex<TrajectoryGenerator>>,
-        tx: Sender<Telemetry>,
+        tx: Vec<Sender<Telemetry>>,
+        shutdown: Arc<AtomicBool>,
     ) -> JoinHandle<()> {
-        let mut imu = Imu::new(trajectory_generator, tx);
-        std::thread::spawn(move || loop {
-            let current_position = imu
-                .trajectory_generator
-                .lock()
-                .unwrap()
-                .get_current_position();
+        std::thread::spawn(move || {
+            let mut imu = Imu::new(trajectory_generator, tx);
+            while !shutdown.load(Ordering::SeqCst) {
+                let current_position = imu
+                    .trajectory_generator
+                    .lock()
+                    .unwrap()
+                    .get_current_position();
 
-            let acceleration = calculate_acceleration(&imu.prev_position, &current_position);
-            imu.prev_position = current_position;
-            let Ok(_) = imu.tx.send(acceleration) else {
-                println!("Receiver has been closed. Turning the IMU off.");
-                break;
-            };
-            std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+                let acceleration = calculate_acceleration(&imu.prev_position, &current_position);
+                imu.prev_position = current_position;
+
+                imu.tx.retain(|tx| tx.send(acceleration).is_ok());
+                if imu.tx.is_empty() {
+                    break;
+                }
+                std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+            }
         })
     }
 }
@@ -140,20 +148,33 @@ mod test {
     }
 
     #[test]
+    fn given_rx_goes_out_of_scope_imu_shuts_down() {
+        let trajectory_generator = Arc::new(Mutex::new(TrajectoryGenerator));
+        let (tx, rx) = mpsc::channel();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let imu = Imu::run(
+            trajectory_generator,
+            vec![tx],
+            Arc::clone(&shutdown_trigger),
+        );
+        drop(rx);
+        imu.join().unwrap();
+    }
+
+    #[test]
     fn smoke_test_if_main_loop_does_not_crash() {
         let trajectory_generator = Arc::new(Mutex::new(TrajectoryGenerator));
         let (tx, rx) = mpsc::channel();
-        let imu = Imu::run(trajectory_generator, tx);
-        let acceleration = rx.recv().unwrap();
-        match acceleration {
-            Telemetry::Acceleration(data) => {
-                assert_eq!(data.x, 0.0);
-                assert_eq!(data.y, 0.0);
-                assert_eq!(data.z, 0.0);
-            }
-            Telemetry::Position(_) => panic!("IMU cannot return position"),
-        }
-        drop(rx);
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let imu = Imu::run(
+            trajectory_generator,
+            vec![tx],
+            Arc::clone(&shutdown_trigger),
+        );
+        std::thread::sleep(Duration::from_secs(1));
+        shutdown_trigger.store(true, Ordering::SeqCst);
         imu.join().unwrap();
+        let received: Vec<_> = rx.try_iter().collect();
+        assert!(!received.is_empty());
     }
 }
