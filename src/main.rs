@@ -4,7 +4,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crate::data::Telemetry;
+use crate::data::{Telemetry, Data};
 use crate::imu::Imu;
 use crate::trajectory_generator::TrajectoryGenerator;
 
@@ -12,14 +12,17 @@ pub mod data;
 mod imu;
 mod trajectory_generator;
 
+//Refresh rate in Hz
+const GENERATOR_FREQ: f64 = 10.0;
+
 fn create_data_source(
-    trajectory_generator: Arc<Mutex<TrajectoryGenerator>>,
+    trajectory_data: Arc<Mutex<Data>>,
     consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>>,
     shutdown: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
     let consumer_registry = consumer_registry.lock().unwrap();
     Imu::run(
-        trajectory_generator,
+        trajectory_data,
         consumer_registry.values().cloned().collect(),
         Arc::clone(&shutdown),
     )
@@ -78,16 +81,16 @@ fn system_shutdown(
 }
 
 fn main() {
-    println!("Hello RustSDF!");
-    let position_generator = Arc::new(Mutex::new(TrajectoryGenerator));
     let consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
+    let (generated_data_handle, generator_handle) =
+        TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
     let consumer0_handle = create_data_consumer(Arc::clone(&consumer_registry));
     let consumer1_handle = create_data_consumer(Arc::clone(&consumer_registry));
     let data_source_handle = create_data_source(
-        Arc::clone(&position_generator),
+	Arc::clone(&generated_data_handle),
         Arc::clone(&consumer_registry),
         Arc::clone(&shutdown_trigger),
     );
@@ -98,6 +101,7 @@ fn main() {
         Arc::clone(&shutdown_trigger),
     );
 
+    generator_handle.join().unwrap();
     data_source_handle.join().unwrap();
     consumer1_handle.join().unwrap();
     consumer0_handle.join().unwrap();
@@ -125,12 +129,13 @@ mod tests {
     fn test_producer_sends_data() {
         let consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let position_generator = Arc::new(Mutex::new(TrajectoryGenerator));
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
+	let (generated_data_handle, _) =
+        TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
         let (_id, rx) = register_new_consumer(Arc::clone(&consumer_registry));
 
         let test_producer_handle = create_data_source(
-            Arc::clone(&position_generator),
+		Arc::clone(&generated_data_handle),
             Arc::clone(&consumer_registry),
             Arc::clone(&shutdown_trigger),
         );
