@@ -3,20 +3,14 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::SystemTime;
 
-use crate::data::Data;
+use crate::data::{Data, Telemetry};
 
-//TODO: read only IMU data
-#[warn(while_true)]
-// fn handle_average_thread(rx_input: mpsc::Receiver<Data>) {
+//TODO: for now fn is commented out, since this operation is performed in the main.rs
+// fn handle_average_thread(rx_input: mpsc::Receiver<Telemetry>) {
 //     thread::spawn(move || {
 //         let mut buffer = VecDeque::new();
 
-//         loop {
-//             let new_data = match rx_input.recv() {
-//                 Ok(data) => data,
-//                 Err(_) => break,
-//             };
-
+//         while let Ok(Telemetry::Acceleration(new_data)) = rx_input.recv() {
 //             handle_data_buffer(&mut buffer, new_data);
 //             calculate_average(&buffer);
 //             let recv_handle = send_calculated_average(new_data);
@@ -54,13 +48,9 @@ pub fn calculate_average(buffer: &VecDeque<Data>) -> Data {
     }
 }
 
-pub fn send_calculated_average(data: Data) -> mpsc::Receiver<Data> {
-    println!(
-        "Average filter result: x = {}, y = {}, z = {}",
-        data.x, data.y, data.z
-    );
+pub fn send_calculated_average(data: Data) -> mpsc::Receiver<Telemetry> {
     let (sender, receiver) = mpsc::channel();
-    sender.send(data).unwrap();
+    sender.send(Telemetry::Acceleration(data)).unwrap();
     receiver
 }
 
