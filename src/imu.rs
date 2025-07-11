@@ -42,6 +42,7 @@ impl Imu {
                 }
                 std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
             }
+            println!("Imu removed");
         })
     }
 }

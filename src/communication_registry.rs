@@ -14,7 +14,7 @@ pub enum DataSource {
 }
 
 pub struct CommunicationRegistry {
-    transmitter_registry: HashMap<DataSource, Vec<Sender<Telemetry>>>,
+    pub transmitter_registry: HashMap<DataSource, Vec<Sender<Telemetry>>>,
 }
 
 impl CommunicationRegistry {
