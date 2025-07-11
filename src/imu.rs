@@ -1,5 +1,4 @@
 use crate::data::{Data, Telemetry};
-use crate::trajectory_generator::TrajectoryGenerator;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -8,7 +7,7 @@ use std::time::Duration;
 
 pub struct Imu {
     tx: Vec<Sender<Telemetry>>,
-    trajectory_generator: Arc<Mutex<TrajectoryGenerator>>,
+    data_handle: Arc<Mutex<Data>>,
     prev_position: Data,
 }
 
@@ -16,30 +15,23 @@ pub struct Imu {
 const REFRESH_FREQ: u32 = 2;
 
 impl Imu {
-    fn new(
-        trajectory_generator: Arc<Mutex<TrajectoryGenerator>>,
-        tx: Vec<Sender<Telemetry>>,
-    ) -> Imu {
+    fn new(data_handle: Arc<Mutex<Data>>, tx: Vec<Sender<Telemetry>>, initial_position: Data) -> Imu {
         Imu {
             tx,
-            trajectory_generator,
-            prev_position: Data::new(),
+            data_handle,
+            prev_position: initial_position,
         }
     }
 
     pub fn run(
-        trajectory_generator: Arc<Mutex<TrajectoryGenerator>>,
+        data_handle: Arc<Mutex<Data>>,
         tx: Vec<Sender<Telemetry>>,
         shutdown: Arc<AtomicBool>,
     ) -> JoinHandle<()> {
         std::thread::spawn(move || {
-            let mut imu = Imu::new(trajectory_generator, tx);
+            let mut imu = Imu::new(Arc::clone(&data_handle), tx, *data_handle.lock().unwrap());
             while !shutdown.load(Ordering::SeqCst) {
-                let current_position = imu
-                    .trajectory_generator
-                    .lock()
-                    .unwrap()
-                    .get_current_position();
+                let current_position = *imu.data_handle.lock().unwrap();
 
                 let acceleration = calculate_acceleration(&imu.prev_position, &current_position);
                 imu.prev_position = current_position;
@@ -79,6 +71,7 @@ fn calculate_axis_acceleration(
     curr_position: f64,
     delta_time: &Duration,
 ) -> f64 {
+    let delta_time = if *delta_time == Duration::from_secs(0) {Duration::from_micros(1)} else {*delta_time};
     (2.0 * (curr_position - prev_position)) / delta_time.as_secs_f64().powf(2.0)
 }
 
@@ -91,6 +84,7 @@ fn get_cycle_duration(frequency: u32) -> Duration {
 
 #[cfg(test)]
 mod test {
+    use crate::trajectory_generator::TrajectoryGenerator;
     use std::{sync::mpsc, time::SystemTime};
 
     use super::*;
@@ -149,11 +143,12 @@ mod test {
 
     #[test]
     fn given_rx_goes_out_of_scope_imu_shuts_down() {
-        let trajectory_generator = Arc::new(Mutex::new(TrajectoryGenerator));
-        let (tx, rx) = mpsc::channel();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(5.0, Arc::clone(&shutdown_trigger));
+        let (tx, rx) = mpsc::channel();
         let imu = Imu::run(
-            trajectory_generator,
+            Arc::clone(&generated_data_handle),
             vec![tx],
             Arc::clone(&shutdown_trigger),
         );
@@ -163,18 +158,26 @@ mod test {
 
     #[test]
     fn smoke_test_if_main_loop_does_not_crash() {
-        let trajectory_generator = Arc::new(Mutex::new(TrajectoryGenerator));
-        let (tx, rx) = mpsc::channel();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(5.0, Arc::clone(&shutdown_trigger));
+        let (tx, rx) = mpsc::channel();
         let imu = Imu::run(
-            trajectory_generator,
+            Arc::clone(&generated_data_handle),
             vec![tx],
             Arc::clone(&shutdown_trigger),
         );
         std::thread::sleep(Duration::from_secs(1));
+	let acceleration = rx.recv().unwrap();
+        match acceleration {
+            Telemetry::Acceleration(data) => {
+                assert_eq!(data.y, 0.0);
+                assert_eq!(data.x, 0.0);
+                assert_eq!(data.z, 0.0);
+            }
+            Telemetry::Position(_) => panic!("IMU cannot return position"),
+        }
         shutdown_trigger.store(true, Ordering::SeqCst);
         imu.join().unwrap();
-        let received: Vec<_> = rx.try_iter().collect();
-        assert!(!received.is_empty());
     }
 }
