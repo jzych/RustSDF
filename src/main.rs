@@ -1,13 +1,15 @@
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crate::data::{Telemetry, Data};
+use crate::communication_registry::CommunicationRegistry;
+use crate::communication_registry::DataSource;
+use crate::data::{Data, Telemetry};
 use crate::imu::Imu;
 use crate::trajectory_generator::TrajectoryGenerator;
 
+mod communication_registry;
 pub mod data;
 mod imu;
 mod trajectory_generator;
@@ -15,96 +17,87 @@ mod trajectory_generator;
 //Refresh rate in Hz
 const GENERATOR_FREQ: f64 = 10.0;
 
-fn create_data_source(
+#[allow(unused)]
+#[derive(Debug)]
+enum Error {
+    StartupError(&'static str),
+}
+
+fn start_imu(
     trajectory_data: Arc<Mutex<Data>>,
-    consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>>,
+    communication_registry: &mut CommunicationRegistry,
     shutdown: Arc<AtomicBool>,
-) -> JoinHandle<()> {
-    let consumer_registry = consumer_registry.lock().unwrap();
-    Imu::run(
-        trajectory_data,
-        consumer_registry.values().cloned().collect(),
-        Arc::clone(&shutdown),
-    )
+) -> Result<JoinHandle<()>, Error> {
+    match communication_registry.get_registered_transmitters(DataSource::Imu) {
+        Some(transmitters) => Ok(Imu::run(
+            trajectory_data,
+            transmitters,
+            Arc::clone(&shutdown),
+        )),
+        None => Err(Error::StartupError(
+            "No subscribers for Imu. Start aborted.",
+        )),
+    }
 }
 
-fn register_new_consumer(
-    consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>>,
-) -> (usize, mpsc::Receiver<Telemetry>) {
-    let (input_tx, input_rx) = mpsc::channel();
-    let mut registry = consumer_registry.lock().unwrap();
-    let id = registry.len();
-
-    registry.insert(id, input_tx);
-
-    (id, input_rx)
-}
-
-fn deregister_consumer(
-    id: usize,
-    consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>>,
-) {
-    let mut registry = consumer_registry.lock().unwrap();
-    registry.remove(&id);
-    println!("Consumer{id} removed");
-}
-
-fn create_data_consumer(
-    consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>>,
-) -> JoinHandle<()> {
-    let (id, input_rx) = register_new_consumer(Arc::clone(&consumer_registry));
+fn create_data_consumer(consumer_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
+    let (tx, input_rx) = mpsc::channel();
+    consumer_registry.register_for_input(DataSource::Imu, tx);
 
     let handle = thread::spawn(move || {
         for data in input_rx {
             match data {
                 Telemetry::Acceleration(d) => {
-                    println!("Consumer{}: received: {}, {}, {}", id, d.x, d.y, d.z)
+                    println!(
+                        "Consumer{:?}: received: {}, {}, {}",
+                        DataSource::Imu,
+                        d.x,
+                        d.y,
+                        d.z
+                    )
                 }
                 Telemetry::Position(d) => {
-                    println!("Consumer{}: received: {}, {}, {}", id, d.x, d.y, d.z)
+                    println!(
+                        "Consumer{:?}: received: {}, {}, {}",
+                        DataSource::Gps,
+                        d.x,
+                        d.y,
+                        d.z
+                    )
                 }
             }
         }
-
-        deregister_consumer(id, consumer_registry);
+        println!("Channel has been closed, exiting the thread.");
     });
     handle
 }
 
-fn system_shutdown(
-    consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>>,
-    shutdown_trigger: Arc<AtomicBool>,
-) {
+fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
     shutdown_trigger.store(true, Ordering::SeqCst);
-    let mut registry = consumer_registry.lock().unwrap();
-    registry.clear();
 }
 
-fn main() {
-    let consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+fn main() -> Result<(), Error> {
+    let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
+    let consumer0_handle = create_data_consumer(&mut communication_registry);
+    let consumer1_handle = create_data_consumer(&mut communication_registry);
     let (generated_data_handle, generator_handle) =
         TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
-    let consumer0_handle = create_data_consumer(Arc::clone(&consumer_registry));
-    let consumer1_handle = create_data_consumer(Arc::clone(&consumer_registry));
-    let data_source_handle = create_data_source(
-	Arc::clone(&generated_data_handle),
-        Arc::clone(&consumer_registry),
+    let data_source_handle = start_imu(
+        Arc::clone(&generated_data_handle),
+        &mut communication_registry,
         Arc::clone(&shutdown_trigger),
-    );
+    )?;
 
     thread::sleep(Duration::from_secs(6));
-    system_shutdown(
-        Arc::clone(&consumer_registry),
-        Arc::clone(&shutdown_trigger),
-    );
+    system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
     data_source_handle.join().unwrap();
     consumer1_handle.join().unwrap();
     consumer0_handle.join().unwrap();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -114,38 +107,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_register_and_deregister_of_consumer() {
-        let consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+    fn imu_startup_without_subscriber_fails() {
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let result = start_imu(
+            Arc::clone(&generated_data_handle),
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+        assert!(result.is_err());
+    }
 
-        let (id, _rx) = register_new_consumer(Arc::clone(&consumer_registry));
-        assert!(consumer_registry.lock().unwrap().contains_key(&id));
+    #[test]
+    fn imu_startup_with_subscriber_suceeds() {
+        let (tx, _) = mpsc::channel();
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
 
-        deregister_consumer(id, Arc::clone(&consumer_registry));
-        assert!(!consumer_registry.lock().unwrap().contains_key(&id));
+        communication_registry.register_for_input(DataSource::Imu, tx);
+        let result = start_imu(
+            Arc::clone(&generated_data_handle),
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+
+        assert!(result.is_ok());
+        shutdown_trigger.store(true, Ordering::SeqCst);
     }
 
     #[test]
     fn test_producer_sends_data() {
-        let consumer_registry: Arc<Mutex<HashMap<usize, mpsc::Sender<Telemetry>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-	let (generated_data_handle, _) =
-        TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
-        let (_id, rx) = register_new_consumer(Arc::clone(&consumer_registry));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
 
-        let test_producer_handle = create_data_source(
-		Arc::clone(&generated_data_handle),
-            Arc::clone(&consumer_registry),
+        let mut communication_registry = CommunicationRegistry::new();
+        let (tx, rx) = mpsc::channel();
+        communication_registry.register_for_input(DataSource::Imu, tx);
+
+        let test_producer_handle = start_imu(
+            Arc::clone(&generated_data_handle),
+            &mut communication_registry,
             Arc::clone(&shutdown_trigger),
         );
 
         thread::sleep(Duration::from_secs(2));
-        system_shutdown(
-            Arc::clone(&consumer_registry),
-            Arc::clone(&shutdown_trigger),
-        );
-        test_producer_handle.join().unwrap();
+
+        system_shutdown(Arc::clone(&shutdown_trigger));
+        test_producer_handle.unwrap().join().unwrap();
 
         let received: Vec<_> = rx.try_iter().collect();
         assert!(!received.is_empty());
