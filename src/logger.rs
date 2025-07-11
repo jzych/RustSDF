@@ -16,7 +16,7 @@ pub struct LogEntry<T> {
 }
 
 pub struct Logger<T: Send + Clone + Debug + 'static> {
-    sender: mpsc::Sender<LogEntry<T>>,
+    sender: mpsc::Sender<LogEntry<T>>, 
     data_storage: Arc<Mutex<Vec<LogEntry<T>>>>,
 }
 
@@ -69,16 +69,16 @@ fn get_or_create_logger<T: Send + Clone + Debug + Sync + 'static>(name: &str) ->
     new_logger
 }
 
-pub fn log<T: Send + Clone + Debug + Sync + 'static>(component: &str, data: T) {
-    let logger = get_or_create_logger::<T>(component);
+pub fn log<T: Send + Clone + Debug + Sync + 'static>(component_name: &str, data: T) {
+    let logger = get_or_create_logger::<T>(component_name);
     logger.log(data);
 }
 
 pub fn get_data<T: Send + Clone + Debug + Sync + 'static>(
-    component: &str,
+    component_name: &str,
 ) -> Option<Vec<LogEntry<T>>> {
     let loggers = LOGGERS.lock().unwrap();
-    if let Some(logger) = loggers.get(component) {
+    if let Some(logger) = loggers.get(component_name) {
         if let Some(typed_logger) = logger.downcast_ref::<Arc<Logger<T>>>() {
             return Some(typed_logger.get_data());
         }
