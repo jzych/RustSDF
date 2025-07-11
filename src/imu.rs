@@ -1,4 +1,5 @@
 use crate::data::{Data, Telemetry};
+use crate::logger::log;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -35,6 +36,7 @@ impl Imu {
 
                 let acceleration = calculate_acceleration(&imu.prev_position, &current_position);
                 imu.prev_position = current_position;
+                log("Imu", acceleration);
 
                 imu.tx.retain(|tx| tx.send(acceleration).is_ok());
                 if imu.tx.is_empty() {

@@ -1,15 +1,20 @@
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use chrono::{DateTime, Local};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, Ordering},
+    sync::{mpsc, Arc, Mutex},
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use crate::data::{Telemetry, Data};
 use crate::imu::Imu;
+use crate::logger::get_data;
 use crate::trajectory_generator::TrajectoryGenerator;
 
-pub mod data;
+mod data;
 mod imu;
+mod logger;
 mod trajectory_generator;
 
 //Refresh rate in Hz
@@ -105,6 +110,29 @@ fn main() {
     data_source_handle.join().unwrap();
     consumer1_handle.join().unwrap();
     consumer0_handle.join().unwrap();
+
+    let imu_log = get_data::<Telemetry>("Imu");
+
+    match imu_log {
+        Some(imu_log) => {
+            for entry in imu_log {
+                let datetime: DateTime<Local> = entry.timestamp.into();
+                match entry.data {
+                    Telemetry::Acceleration(data) => {
+                        println!(
+                            "[IMU] {}, Acceleration: ({}, {}, {})",
+                            datetime.format("%Y-%m-%d %H:%M:%S.%9f"),
+                            data.x,
+                            data.y,
+                            data.z
+                        );
+                    }
+                    Telemetry::Position(_) => {}
+                }
+            }
+        }
+        None => println!("No data found for IMU"),
+    }
 }
 
 #[cfg(test)]
