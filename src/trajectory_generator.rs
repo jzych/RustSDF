@@ -32,7 +32,7 @@ impl TrajectoryGenerator {
     }
 
     pub fn run(
-        frequency: f64,
+        period: f64,
         shutdown_trigger: Arc<AtomicBool>,
     ) -> (Arc<Mutex<Data>>, JoinHandle<()>) {
         let data_handle = Arc::new(Mutex::new(Data::new()));
@@ -45,7 +45,7 @@ impl TrajectoryGenerator {
                     *generator.data_handle.lock().unwrap() = TrajectoryGenerator::generate_data();
                 }
 
-                std::thread::sleep(Duration::from_secs_f64(frequency));
+                std::thread::sleep(Duration::from_secs_f64(period));
             }
             println!("Trajectory generator removed");
         });

@@ -71,6 +71,7 @@ fn calculate_axis_acceleration(
     curr_position: f64,
     delta_time: &Duration,
 ) -> f64 {
+    let delta_time = if *delta_time == Duration::from_secs(0) {Duration::from_micros(1)} else {*delta_time};
     (2.0 * (curr_position - prev_position)) / delta_time.as_secs_f64().powf(2.0)
 }
 
@@ -170,9 +171,9 @@ mod test {
 	let acceleration = rx.recv().unwrap();
         match acceleration {
             Telemetry::Acceleration(data) => {
-                assert_ne!(data.x, 0.0);
-                assert_ne!(data.y, 0.0);
-                assert_ne!(data.z, 0.0);
+                assert_eq!(data.y, 0.0);
+                assert_eq!(data.x, 0.0);
+                assert_eq!(data.z, 0.0);
             }
             Telemetry::Position(_) => panic!("IMU cannot return position"),
         }
