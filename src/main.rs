@@ -13,7 +13,7 @@ use crate::{
     imu::Imu,
     trajectory_generator::TrajectoryGenerator,
     gps::Gps,
-    kalman::{KalmanData, KalmanFilter},
+    kalman::KalmanFilter,
 };
 
 mod communication_registry;
@@ -204,6 +204,17 @@ mod tests {
         assert!(result.is_err());
     }
 
+        #[test]
+    fn kalman_startup_without_subscriber_fails() {
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let result = start_kalman(
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+        assert!(result.is_err());
+    }
+
     #[test]
     fn imu_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
@@ -234,6 +245,22 @@ mod tests {
         communication_registry.register_for_input(DataSource::Gps, tx);
         let result = start_gps(
             Arc::clone(&generated_data_handle),
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+
+        assert!(result.is_ok());
+        shutdown_trigger.store(true, Ordering::SeqCst);
+    }
+
+        #[test]
+    fn kalman_startup_with_subscriber_suceeds() {
+        let (tx, _) = mpsc::channel();
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+
+        communication_registry.register_for_input(DataSource::Kalman, tx);
+        let result = start_kalman(
             &mut communication_registry,
             Arc::clone(&shutdown_trigger),
         );

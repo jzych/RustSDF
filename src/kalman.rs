@@ -3,18 +3,16 @@
 use nalgebra::{Const, Matrix3, Matrix3x6, Matrix6, Matrix6x3, Matrix6x1, Matrix3x1};
 use std::thread::JoinHandle;
 use crate::data::{Data, Telemetry};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::SystemTime;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::communication_registry::CommunicationRegistry;
-use crate::communication_registry::DataSource;
 
 
 
 const DT_IMU : f64 = 0.1; // seconds
-const KALMAN_INTERVAL : u64 = DT_IMU as u64 * 1000; // miliseconds
+// const KALMAN_INTERVAL : u64 = DT_IMU as u64 * 1000; // miliseconds
 const SIGMA_ACC : f64 = 0.01;
 const SIGMA_GPS : f64 = 0.1;
 
@@ -62,6 +60,7 @@ impl KalmanFilter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn show(&self){
         println!("A: {}", self.A);
         println!("B: {}", self.B);
@@ -177,6 +176,9 @@ fn create_matrix_R(sigma_gps: f64) -> Matrix3<f64> {
 #[cfg(test)]
 mod test {
 
+    use std::{sync::mpsc, time::SystemTime};
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -187,33 +189,86 @@ mod test {
         assert_eq!(A[(0, 3)], dt);
     }
 
-    // #[test]
-    // fn test_kalman_filter_initialization() {
-    //     let kf = KalmanFilter::new();
-    //     assert_eq!(kf.previous_kalman_state.x, Matrix6x1::zeros());
-    // }
+    #[test]
+    fn test_create_matrix_B() {
+        let dt = 0.1;
+        let B = create_matrix_B(dt);
+        assert_eq!(B[(0, 0)], dt*dt*0.5);
+        assert_eq!(B[(0, 1)], 0.0);
+    }
 
-    // #[test]
-    // fn test_prediction_step() {
-    //     let mut kf = KalmanFilter::new();
-    //     let acc = Data { x: 1.0, y: 0.0, z: 0.0, timestamp: SystemTime::now() };
-    //     let telemetry = Telemetry::Acceleration(acc);
-    //     let result = kf.compute(telemetry);
-    //     assert_ne!(result.x, Matrix6x1::zeros());
-    // }
-   
-    // #[test]
-    // fn test_correction_step() {
-    //     let mut kf = KalmanFilter::new();
-    //     // First do a prediction to initialize state
-    //     let acc = Data { x: 0.0, y: 0.0, z: 0.0, timestamp: SystemTime::now() };
-    //     kf.compute(Telemetry::Acceleration(acc));
+    #[test]
+    fn test_create_matrix_H() {
+        let H = create_matrix_H();
+        assert_eq!(H[(0, 0)], 1.0);
+        assert_eq!(H[(0, 1)], 0.0);
+    }
 
-    //     let gps = Data { x: 5.0, y: 5.0, z: 5.0, timestamp: SystemTime::now() };
-    //     let result = kf.compute(Telemetry::Position(gps));
-    //     assert_ne!(result.x, Matrix6x1::zeros());
-    // }
+    #[test]
+    fn test_create_matrix_Q() {
+        let dt = 0.1;
+        let sigma = 1.0;
+        let Q = create_matrix_Q(dt, sigma);
+        assert_eq!(Q[(0, 0)], dt.powi(4)/4.0 * sigma);
+        assert_eq!(Q[(0, 1)], 0.0);
+    }
 
+    #[test]
+    fn test_create_matrix_R() {
+        let sigma = 0.01;
+        let R = create_matrix_R(sigma);
+        assert_eq!(R[(0, 0)], sigma);
+        assert_eq!(R[(0, 1)], 0.0);
+    }
+
+    #[test]
+    fn test_KalmanData_init() {
+        let kd : KalmanData = KalmanData::new();
+        assert_eq!(kd.P[(5,5)], 0.0);
+        assert_eq!(kd.x[5], 0.0);
+    }
+
+    #[test]
+    fn test_KalmanFilter_run() {
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        
+        let (tx_imu, input_rx) = mpsc::channel();
+        let tx_gps = tx_imu.clone();
+        
+        let (tx_kalman, rx_from_kalman) = mpsc::channel();
+
+        let mut transmitters : Vec<Sender<Telemetry>> = vec![]; 
+        transmitters.push(tx_kalman);
+
+        let kalman_handle = KalmanFilter::run(
+            transmitters,
+            input_rx,
+            Arc::clone(&shutdown_trigger),
+        );
+
+
+        let _ = tx_imu.send(Telemetry::Acceleration(Data { x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now() }));
+        match rx_from_kalman.recv() {
+            Ok(data) => assert_ne!(data.data().x, 0.0),
+            Err(e) => panic!("Failed to receive: {}", e),
+        }
+
+        let _ = tx_gps.send(Telemetry::Position(Data { x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now() }));
+        
+        match rx_from_kalman.recv() {
+            Ok(data) => assert_ne!(data.data().x, 0.0),
+            Err(e) => panic!("Failed to receive: {}", e),
+        }
+
+        std::thread::sleep(Duration::from_secs(2));
+        shutdown_trigger.store(true, Ordering::SeqCst);
+
+        drop(tx_imu);
+        drop(tx_gps);
+
+        kalman_handle.join().unwrap();
+    }
+    
 
 
 }
