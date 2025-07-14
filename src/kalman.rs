@@ -5,8 +5,6 @@ use std::thread::JoinHandle;
 use crate::data::{Data, Telemetry};
 use std::time::SystemTime;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 
 
@@ -72,59 +70,50 @@ impl KalmanFilter {
     pub fn run(
         tx: Vec<Sender<Telemetry>>,
         rx: Receiver<Telemetry>,
-        shutdown: Arc<AtomicBool>,
     ) -> JoinHandle<()> {
         std::thread::spawn( move || {
             let mut state: KalmanData = KalmanData::new();
             let mut kalman = KalmanFilter::new(tx);
             let mut kalman_position_estimate : Telemetry;
-            while !shutdown.load(Ordering::SeqCst) {
-                for telemetry in rx.iter() {
-                    // println!(
-                    //     "Kalman received data: {}, {}, {}",
-                    //     telemetry.data().x, telemetry.data().y, telemetry.data().z
-                    // );
-                    match telemetry {
-                        
-                        Telemetry::Acceleration(data) => {
-                            // prediction
-                            let u = Matrix3x1::new(data.x, data.y, data.z);
-                            state.x = kalman.A * kalman.previous_kalman_state.x + kalman.B * u;
-                            state.P = kalman.A * kalman.previous_kalman_state.P * kalman.A.transpose() + kalman.Q;
-                        }
-                        Telemetry::Position(data) => {
-                            // correction
-                            let z = Matrix3x1::new(data.x, data.y, data.z);
-                            let K = state.P * kalman.H.transpose() * (kalman.H * state.P * kalman.H.transpose() + kalman.R).try_inverse().unwrap();
-                            state.x = state.x + K * (z - kalman.H * state.x);
-                            state.P = (Matrix6::identity_generic(Const::<6>,Const::<6>) - K * kalman.H) * state.P;
-                        },
+            for telemetry in rx {
+                // println!(
+                //     "Kalman received data: {}, {}, {}",
+                //     telemetry.data().x, telemetry.data().y, telemetry.data().z
+                // );
+                match telemetry {
+                    
+                    Telemetry::Acceleration(data) => {
+                        // prediction
+                        let u = Matrix3x1::new(data.x, data.y, data.z);
+                        state.x = kalman.A * kalman.previous_kalman_state.x + kalman.B * u;
+                        state.P = kalman.A * kalman.previous_kalman_state.P * kalman.A.transpose() + kalman.Q;
                     }
+                    Telemetry::Position(data) => {
+                        // correction
+                        let z = Matrix3x1::new(data.x, data.y, data.z);
+                        let K = state.P * kalman.H.transpose() * (kalman.H * state.P * kalman.H.transpose() + kalman.R).try_inverse().unwrap();
+                        state.x = state.x + K * (z - kalman.H * state.x);
+                        state.P = (Matrix6::identity_generic(Const::<6>,Const::<6>) - K * kalman.H) * state.P;
+                    },
+                }
 
-                    // println!("Current state estimate: {}", state.x);
-                    // println!("Current prob matrix: {}", state.P);
-                    kalman.previous_kalman_state = state;
-                    kalman_position_estimate = Telemetry::Position(Data { x: state.x[0], y: state.x[1], z: state.x[2], timestamp: SystemTime::now() });
-                    // println!(
-                    //     "Kalman is sending: {}, {}, {}",
-                    //     kalman_position_estimate.data().x, kalman_position_estimate.data().y, kalman_position_estimate.data().z
-                    // );
-                    kalman.tx.retain(|tx| tx.send(kalman_position_estimate).is_ok());
-                    if kalman.tx.is_empty() {
-                        break;
-                    }
+                // println!("Current state estimate: {}", state.x);
+                // println!("Current prob matrix: {}", state.P);
+                kalman.previous_kalman_state = state;
+                kalman_position_estimate = Telemetry::Position(Data { x: state.x[0], y: state.x[1], z: state.x[2], timestamp: SystemTime::now() });
+                // println!(
+                //     "Kalman is sending: {}, {}, {}",
+                //     kalman_position_estimate.data().x, kalman_position_estimate.data().y, kalman_position_estimate.data().z
+                // );
+                kalman.tx.retain(|tx| tx.send(kalman_position_estimate).is_ok());
+                if kalman.tx.is_empty() {
+                    break;
                 }
             }
             println!("Kalman filter removed");
-        })
-        
+        })        
     }
-
-
-
 }
-
-
 
 fn create_matrix_A(dt: f64) -> Matrix6<f64> {
     Matrix6::new(
@@ -229,9 +218,7 @@ mod test {
     }
 
     #[test]
-    fn test_KalmanFilter_run() {
-        let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        
+    fn test_KalmanFilter_run() {        
         let (tx_imu, input_rx) = mpsc::channel();
         let tx_gps = tx_imu.clone();
         
@@ -242,7 +229,6 @@ mod test {
         let kalman_handle = KalmanFilter::run(
             transmitters,
             input_rx,
-            Arc::clone(&shutdown_trigger),
         );
 
 
@@ -259,15 +245,11 @@ mod test {
         }
 
         std::thread::sleep(Duration::from_secs(2));
-        shutdown_trigger.store(true, Ordering::SeqCst);
 
         drop(tx_imu);
         drop(tx_gps);
 
         kalman_handle.join().unwrap();
     }
-    
-
-
 }
 

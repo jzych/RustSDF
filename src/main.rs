@@ -68,7 +68,6 @@ fn start_gps(
 
 fn start_kalman(
     communication_registry: &mut CommunicationRegistry,
-    shutdown: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
     let (tx_imu, input_rx) = mpsc::channel();
     let tx_gps = tx_imu.clone();
@@ -79,7 +78,6 @@ fn start_kalman(
         Some(transmitters) => Ok(KalmanFilter::run(
             transmitters,
             input_rx,
-            Arc::clone(&shutdown),
         )),
         None => Err(Error::StartupError(
             "No subscribers for Kalman. Start aborted.",
@@ -120,13 +118,9 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
 }
 
 fn system_shutdown(
-    communication_registry: &mut CommunicationRegistry,
     shutdown_trigger: Arc<AtomicBool>
 ) {
     shutdown_trigger.store(true, Ordering::SeqCst);
-    for vec in communication_registry.transmitter_registry.values_mut() {
-        vec.clear(); 
-    }
 }
 
 fn main() -> Result<(), Error> {
@@ -137,7 +131,6 @@ fn main() -> Result<(), Error> {
 
     let kalman_handle = start_kalman(
         &mut communication_registry,
-        Arc::clone(&shutdown_trigger),
     )?;
     let (generated_data_handle, generator_handle) =
         TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
@@ -154,8 +147,7 @@ fn main() -> Result<(), Error> {
 
     thread::sleep(Duration::from_secs(6));
     system_shutdown(
-        &mut communication_registry,
-        Arc::clone(&shutdown_trigger)
+            Arc::clone(&shutdown_trigger),
     );
 
     generator_handle.join().unwrap();
@@ -203,10 +195,8 @@ mod tests {
         #[test]
     fn kalman_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
-        let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let result = start_kalman(
             &mut communication_registry,
-            Arc::clone(&shutdown_trigger),
         );
         assert!(result.is_err());
     }
@@ -253,16 +243,13 @@ mod tests {
     fn kalman_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
-        let shutdown_trigger = Arc::new(AtomicBool::new(false));
-
+        
         communication_registry.register_for_input(DataSource::Kalman, tx);
         let result = start_kalman(
             &mut communication_registry,
-            Arc::clone(&shutdown_trigger),
         );
 
         assert!(result.is_ok());
-        shutdown_trigger.store(true, Ordering::SeqCst);
     }
 
     #[test]
@@ -283,7 +270,6 @@ mod tests {
 
         thread::sleep(Duration::from_secs(2));
         system_shutdown(
-            &mut communication_registry,
             Arc::clone(&shutdown_trigger)
         );
         test_producer_handle.unwrap().join().unwrap();
