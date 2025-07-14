@@ -15,7 +15,11 @@ pub struct Imu {
 const REFRESH_FREQ: u32 = 2;
 
 impl Imu {
-    fn new(data_handle: Arc<Mutex<Data>>, tx: Vec<Sender<Telemetry>>, initial_position: Data) -> Imu {
+    fn new(
+        data_handle: Arc<Mutex<Data>>,
+        tx: Vec<Sender<Telemetry>>,
+        initial_position: Data,
+    ) -> Imu {
         Imu {
             tx,
             data_handle,
@@ -31,9 +35,9 @@ impl Imu {
         std::thread::spawn(move || {
             let mut imu = Imu::new(Arc::clone(&data_handle), tx, *data_handle.lock().unwrap());
             while !shutdown.load(Ordering::SeqCst) {
-                let current_position = *imu.data_handle.lock().unwrap();
+                let current_position = dbg!(*imu.data_handle.lock().unwrap());
 
-                let acceleration = calculate_acceleration(&imu.prev_position, &current_position);
+                let acceleration = dbg!(calculate_acceleration(&imu.prev_position, &current_position));
                 imu.prev_position = current_position;
 
                 imu.tx.retain(|tx| tx.send(acceleration).is_ok());
@@ -71,7 +75,9 @@ fn calculate_axis_acceleration(
     curr_position: f64,
     delta_time: &Duration,
 ) -> f64 {
-    let delta_time = if *delta_time == Duration::from_secs(0) {Duration::from_micros(1)} else {*delta_time};
+    if *delta_time == Duration::new(0, 0) {
+        return 0.0;
+    }
     (2.0 * (curr_position - prev_position)) / delta_time.as_secs_f64().powf(2.0)
 }
 
@@ -157,6 +163,30 @@ mod test {
     }
 
     #[test]
+    fn given_two_samples_with_the_same_time_expect_no_acceleration() {
+        let position_data = Arc::new(Mutex::new(Data::new()));
+        position_data.lock().unwrap().x = 1.2;
+        let (tx, rx) = mpsc::channel();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let imu = Imu::run(
+            Arc::clone(&position_data),
+            vec![tx],
+            Arc::clone(&shutdown_trigger),
+        );
+            
+        position_data.lock().unwrap().x = 0.2;
+        std::thread::sleep(get_cycle_duration(REFRESH_FREQ) + Duration::from_millis(50));
+
+        let Telemetry::Acceleration(acc) = rx.recv().unwrap() else {
+            panic!("IMU cannot return position");
+        };
+
+        assert_eq!(acc.x, 0.0);
+        shutdown_trigger.store(true, Ordering::SeqCst);
+        imu.join().unwrap();
+    }
+
+    #[test]
     fn smoke_test_if_main_loop_does_not_crash() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let (generated_data_handle, _) =
@@ -168,7 +198,7 @@ mod test {
             Arc::clone(&shutdown_trigger),
         );
         std::thread::sleep(Duration::from_secs(1));
-	let acceleration = rx.recv().unwrap();
+        let acceleration = rx.recv().unwrap();
         match acceleration {
             Telemetry::Acceleration(data) => {
                 assert_eq!(data.y, 0.0);
