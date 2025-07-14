@@ -50,7 +50,7 @@ impl KalmanFilter {
     fn new(tx: Vec<Sender<Telemetry>>) -> KalmanFilter {
         
         KalmanFilter {
-            tx: tx,
+            tx,
             A: create_matrix_A(DT_IMU),
             B: create_matrix_B(DT_IMU),
             H: create_matrix_H(),
@@ -237,8 +237,7 @@ mod test {
         
         let (tx_kalman, rx_from_kalman) = mpsc::channel();
 
-        let mut transmitters : Vec<Sender<Telemetry>> = vec![]; 
-        transmitters.push(tx_kalman);
+        let transmitters : Vec<Sender<Telemetry>> = vec![tx_kalman]; 
 
         let kalman_handle = KalmanFilter::run(
             transmitters,
