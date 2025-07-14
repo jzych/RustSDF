@@ -1,69 +1,78 @@
-use std::collections::VecDeque;
-use std::sync::mpsc;
-use std::thread;
-use std::time::SystemTime;
+use std::{
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, Sender}, 
+        Arc,
+    },
+    thread::{self, JoinHandle},
+    time::SystemTime,
+};
 
 use crate::data::{Data, Telemetry};
 
-//TODO: for now fn is commented out, since this operation is performed in the main.rs
-// fn handle_average_thread(rx_input: mpsc::Receiver<Telemetry>) {
-//     thread::spawn(move || {
-//         let mut buffer = VecDeque::new();
+#[allow(unused)]
+pub struct Average;
 
-//         while let Ok(Telemetry::Acceleration(new_data)) = rx_input.recv() {
-//             handle_data_buffer(&mut buffer, new_data);
-//             calculate_average(&buffer);
-//             let recv_handle = send_calculated_average(new_data);
-//         }
-//     });
-// }
+impl Average {
+    pub fn run(mut tx: Vec<Sender<Telemetry>>, rx: Receiver<Telemetry>, shutdown: Arc<AtomicBool>) -> JoinHandle<()> {
+        thread::spawn(move || {
+            let mut buffer = VecDeque::new();
 
-pub fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
-    if buffer.len() < 10 {
-        buffer.push_back(new_data);
-    } else {
-        buffer.pop_front();
-        buffer.push_back(new_data);
-    }
-}
-
-pub fn calculate_average(buffer: &VecDeque<Data>) -> Data {
-    let buffer_iter = buffer.iter();
-    let count = buffer.len();
-    let mut sum_x: f64 = 0.0;
-    let mut sum_y: f64 = 0.0;
-    let mut sum_z: f64 = 0.0;
-
-    for elem in buffer_iter {
-        sum_x += elem.x;
-        sum_y += elem.y;
-        sum_z += elem.z;
+            while !shutdown.load(Ordering::SeqCst) {
+                if let Ok(Telemetry::Acceleration(new_data)) = rx.recv() {
+                    println!("Average filter received: {} {} {}", new_data.x, new_data.y, new_data.z);
+                    Average::handle_data_buffer(&mut buffer, new_data);
+                    let avg_data = Average::calculate_average(&buffer);
+                    println!("Average filter calculated: {} {} {}", avg_data.x, avg_data.y, avg_data.z);
+                    tx.retain(|tx| tx.send(Telemetry::Acceleration(avg_data)).is_ok());
+                }
+                
+                if tx.is_empty() {
+                    break;
+                }
+            }
+        })
     }
 
-    Data {
-        x: sum_x / count as f64,
-        y: sum_y / count as f64,
-        z: sum_z / count as f64,
-        timestamp: SystemTime::now(),
+    pub fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
+        if buffer.len() < 10 {
+            buffer.push_back(new_data);
+        } else {
+            buffer.pop_front();
+            buffer.push_back(new_data);
+        }
     }
-}
 
-pub fn send_calculated_average(data: Data) -> mpsc::Receiver<Telemetry> {
-    let (sender, receiver) = mpsc::channel();
-    sender.send(Telemetry::Acceleration(data)).unwrap();
-    receiver
+    pub fn calculate_average(buffer: &VecDeque<Data>) -> Data {
+        let buffer_iter = buffer.iter();
+        let count = buffer.len();
+        let mut sum_x: f64 = 0.0;
+        let mut sum_y: f64 = 0.0;
+        let mut sum_z: f64 = 0.0;
+
+        for elem in buffer_iter {
+            sum_x += elem.x;
+            sum_y += elem.y;
+            sum_z += elem.z;
+        }
+
+        Data {
+            x: sum_x / count as f64,
+            y: sum_y / count as f64,
+            z: sum_z / count as f64,
+            timestamp: SystemTime::now(),
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     use rand::Rng;
     use std::collections::VecDeque;
     use std::time::SystemTime;
-
-    use crate::{
-        average::{calculate_average, handle_data_buffer},
-        data::Data,
-    };
 
     #[test]
     fn test_calculate_average() {
@@ -91,7 +100,7 @@ mod test {
         let local_avg_y: f64 = (buffer[0].y + buffer[1].y + buffer[2].y) / 3.0;
         let local_avg_z: f64 = (buffer[0].z + buffer[1].z + buffer[2].z) / 3.0;
 
-        let calculate_average_output: Data = calculate_average(&buffer);
+        let calculate_average_output: Data = Average::calculate_average(&buffer);
 
         assert!(calculate_average_output.x == local_avg_x);
         assert!(calculate_average_output.y == local_avg_y);
@@ -109,7 +118,7 @@ mod test {
         };
 
         gen_vectors(2, &mut buffer);
-        handle_data_buffer(&mut buffer, data);
+        Average::handle_data_buffer(&mut buffer, data);
         assert!(buffer.len() == 3);
         assert!(buffer[2].x == data.x);
 
@@ -120,7 +129,7 @@ mod test {
         assert!(buffer.is_empty());
 
         gen_vectors(10, &mut buffer);
-        handle_data_buffer(&mut buffer, data);
+        Average::handle_data_buffer(&mut buffer, data);
         assert!(buffer.len() == 10);
         assert!(buffer[9].x == data.x);
     }

@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
@@ -8,13 +9,15 @@ use std::{
 };
 
 use crate::{
+    average::Average,
     communication_registry::{CommunicationRegistry, DataSource},
     data::{Data, Telemetry},
+    gps::Gps,
     imu::Imu,
     trajectory_generator::TrajectoryGenerator,
-    gps::Gps,
 };
 
+mod average;
 mod communication_registry;
 pub mod data;
 mod gps;
@@ -64,7 +67,25 @@ fn start_gps(
     }
 }
 
-fn create_data_consumer(source: DataSource, consumer_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
+fn start_avg_filter(
+    communication_registry: &mut CommunicationRegistry,
+    shutdown: Arc<AtomicBool>,
+) -> Result<JoinHandle<()>, Error> {
+    let (tx, input_rx) = mpsc::channel();
+    communication_registry.register_for_input(DataSource::Imu, tx);
+
+    match communication_registry.get_registered_transmitters(DataSource::Average) {
+        Some(transmitters) => Ok(Average::run(transmitters, input_rx, Arc::clone(&shutdown))),
+        None => Err(Error::StartupError(
+            "No subscribers for Average filter. Start aborted.",
+        )),
+    }
+}
+
+fn create_data_consumer(
+    source: DataSource,
+    consumer_registry: &mut CommunicationRegistry,
+) -> JoinHandle<()> {
     let (tx, input_rx) = mpsc::channel();
     consumer_registry.register_for_input(source, tx);
 
@@ -106,6 +127,9 @@ fn main() -> Result<(), Error> {
 
     let consumer0_handle = create_data_consumer(DataSource::Gps, &mut communication_registry);
     let consumer1_handle = create_data_consumer(DataSource::Imu, &mut communication_registry);
+    let consumer3_handle = create_data_consumer(DataSource::Average, &mut communication_registry);
+
+    let avg_handle = start_avg_filter(&mut communication_registry, Arc::clone(&shutdown_trigger))?;
     let (generated_data_handle, generator_handle) =
         TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
@@ -125,8 +149,10 @@ fn main() -> Result<(), Error> {
     generator_handle.join().unwrap();
     imu_handle.join().unwrap();
     gps_handle.join().unwrap();
+    avg_handle.join().unwrap();
     consumer1_handle.join().unwrap();
     consumer0_handle.join().unwrap();
+    consumer3_handle.join().unwrap();
     Ok(())
 }
 
@@ -165,6 +191,17 @@ mod tests {
     }
 
     #[test]
+    fn avg_startup_without_subscriber_fails() {
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let result = start_avg_filter(
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn imu_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
@@ -194,6 +231,22 @@ mod tests {
         communication_registry.register_for_input(DataSource::Gps, tx);
         let result = start_gps(
             Arc::clone(&generated_data_handle),
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+
+        assert!(result.is_ok());
+        shutdown_trigger.store(true, Ordering::SeqCst);
+    }
+    
+    #[test]
+    fn avg_startup_with_subscriber_suceeds() {
+        let (tx, _) = mpsc::channel();
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+
+        communication_registry.register_for_input(DataSource::Average, tx);
+        let result = start_avg_filter(
             &mut communication_registry,
             Arc::clone(&shutdown_trigger),
         );
