@@ -13,6 +13,7 @@ use crate::{
     imu::Imu,
     trajectory_generator::TrajectoryGenerator,
     gps::Gps,
+    kalman::KalmanFilter,
 };
 
 mod communication_registry;
@@ -20,6 +21,7 @@ pub mod data;
 mod gps;
 mod imu;
 mod trajectory_generator;
+mod kalman;
 
 //Refresh rate in Hz
 const GENERATOR_FREQ: f64 = 10.0;
@@ -64,6 +66,25 @@ fn start_gps(
     }
 }
 
+fn start_kalman(
+    communication_registry: &mut CommunicationRegistry,
+) -> Result<JoinHandle<()>, Error> {
+    let (tx_imu, input_rx) = mpsc::channel();
+    let tx_gps = tx_imu.clone();
+    communication_registry.register_for_input(DataSource::Imu, tx_imu);
+    communication_registry.register_for_input(DataSource::Gps, tx_gps);
+
+    match communication_registry.get_registered_transmitters(DataSource::Kalman) {
+        Some(transmitters) => Ok(KalmanFilter::run(
+            transmitters,
+            input_rx,
+        )),
+        None => Err(Error::StartupError(
+            "No subscribers for Kalman. Start aborted.",
+        )),
+    }
+}
+
 fn create_data_consumer(source: DataSource, consumer_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
     let (tx, input_rx) = mpsc::channel();
     consumer_registry.register_for_input(source, tx);
@@ -73,7 +94,7 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
             match data {
                 Telemetry::Acceleration(d) => {
                     println!(
-                        "Consumer{:?}: received: {}, {}, {}",
+                        "Consuming from: {:?}: received: {}, {}, {}",
                         source,
                         d.x,
                         d.y,
@@ -82,7 +103,7 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
                 }
                 Telemetry::Position(d) => {
                     println!(
-                        "Consumer{:?}: received: {}, {}, {}",
+                        "Consuming from: {:?}: received: {}, {}, {}",
                         source,
                         d.x,
                         d.y,
@@ -96,7 +117,9 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
     handle
 }
 
-fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
+fn system_shutdown(
+    shutdown_trigger: Arc<AtomicBool>
+) {
     shutdown_trigger.store(true, Ordering::SeqCst);
 }
 
@@ -104,8 +127,11 @@ fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
-    let consumer0_handle = create_data_consumer(DataSource::Gps, &mut communication_registry);
-    let consumer1_handle = create_data_consumer(DataSource::Imu, &mut communication_registry);
+    let placeholder_consumer_handle = create_data_consumer(DataSource::Kalman, &mut communication_registry);
+
+    let kalman_handle = start_kalman(
+        &mut communication_registry,
+    )?;
     let (generated_data_handle, generator_handle) =
         TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
@@ -120,13 +146,15 @@ fn main() -> Result<(), Error> {
     )?;
 
     thread::sleep(Duration::from_secs(6));
-    system_shutdown(Arc::clone(&shutdown_trigger));
+    system_shutdown(
+            Arc::clone(&shutdown_trigger),
+    );
 
     generator_handle.join().unwrap();
     imu_handle.join().unwrap();
     gps_handle.join().unwrap();
-    consumer1_handle.join().unwrap();
-    consumer0_handle.join().unwrap();
+    kalman_handle.join().unwrap();
+    placeholder_consumer_handle.join().unwrap();
     Ok(())
 }
 
@@ -160,6 +188,15 @@ mod tests {
             Arc::clone(&generated_data_handle),
             &mut communication_registry,
             Arc::clone(&shutdown_trigger),
+        );
+        assert!(result.is_err());
+    }
+
+        #[test]
+    fn kalman_startup_without_subscriber_fails() {
+        let mut communication_registry = CommunicationRegistry::new();
+        let result = start_kalman(
+            &mut communication_registry,
         );
         assert!(result.is_err());
     }
@@ -202,6 +239,19 @@ mod tests {
         shutdown_trigger.store(true, Ordering::SeqCst);
     }
 
+        #[test]
+    fn kalman_startup_with_subscriber_suceeds() {
+        let (tx, _) = mpsc::channel();
+        let mut communication_registry = CommunicationRegistry::new();
+        
+        communication_registry.register_for_input(DataSource::Kalman, tx);
+        let result = start_kalman(
+            &mut communication_registry,
+        );
+
+        assert!(result.is_ok());
+    }
+
     #[test]
     fn test_producer_sends_data() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
@@ -219,8 +269,9 @@ mod tests {
         );
 
         thread::sleep(Duration::from_secs(2));
-
-        system_shutdown(Arc::clone(&shutdown_trigger));
+        system_shutdown(
+            Arc::clone(&shutdown_trigger)
+        );
         test_producer_handle.unwrap().join().unwrap();
 
         let received: Vec<_> = rx.try_iter().collect();

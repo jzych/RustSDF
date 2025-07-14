@@ -30,3 +30,11 @@ pub enum Telemetry {
     Acceleration(Data),
     Position(Data),
 }
+
+impl Telemetry {
+    pub fn data(&self) -> &Data {
+        match self {
+            Telemetry::Acceleration(d) | Telemetry::Position(d) => d,
+        }
+    }
+}

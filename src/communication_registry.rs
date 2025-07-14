@@ -24,7 +24,10 @@ impl CommunicationRegistry {
         }
     }
 
-    pub fn register_for_input(&mut self, source: DataSource, transmitter: Sender<Telemetry>) {
+    pub fn register_for_input(
+        &mut self, source: DataSource,
+        transmitter: Sender<Telemetry>
+    ) {
         self.transmitter_registry
             .entry(source)
             .or_default()
