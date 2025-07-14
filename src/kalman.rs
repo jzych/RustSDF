@@ -80,10 +80,10 @@ impl KalmanFilter {
             let mut kalman_position_estimate : Telemetry;
             while !shutdown.load(Ordering::SeqCst) {
                 for telemetry in rx.iter() {
-                    println!(
-                        "Kalman consumer: received: {}, {}, {}",
-                        telemetry.data().x, telemetry.data().y, telemetry.data().z
-                    );
+                    // println!(
+                    //     "Kalman received data: {}, {}, {}",
+                    //     telemetry.data().x, telemetry.data().y, telemetry.data().z
+                    // );
                     match telemetry {
                         
                         Telemetry::Acceleration(data) => {
@@ -105,10 +105,10 @@ impl KalmanFilter {
                     // println!("Current prob matrix: {}", state.P);
                     kalman.previous_kalman_state = state;
                     kalman_position_estimate = Telemetry::Position(Data { x: state.x[0], y: state.x[1], z: state.x[2], timestamp: SystemTime::now() });
-                    println!(
-                        "Kalman is sending: {}, {}, {}",
-                        kalman_position_estimate.data().x, kalman_position_estimate.data().y, kalman_position_estimate.data().z
-                    );
+                    // println!(
+                    //     "Kalman is sending: {}, {}, {}",
+                    //     kalman_position_estimate.data().x, kalman_position_estimate.data().y, kalman_position_estimate.data().z
+                    // );
                     kalman.tx.retain(|tx| tx.send(kalman_position_estimate).is_ok());
                     if kalman.tx.is_empty() {
                         break;
@@ -249,14 +249,13 @@ mod test {
         let _ = tx_imu.send(Telemetry::Acceleration(Data { x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now() }));
         match rx_from_kalman.recv() {
             Ok(data) => assert_ne!(data.data().x, 0.0),
-            Err(e) => panic!("Failed to receive: {}", e),
+            Err(e) => panic!("Failed to receive: {e}"),
         }
 
         let _ = tx_gps.send(Telemetry::Position(Data { x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now() }));
-        
         match rx_from_kalman.recv() {
             Ok(data) => assert_ne!(data.data().x, 0.0),
-            Err(e) => panic!("Failed to receive: {}", e),
+            Err(e) => panic!("Failed to receive: {e}"),
         }
 
         std::thread::sleep(Duration::from_secs(2));

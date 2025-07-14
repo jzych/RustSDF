@@ -82,7 +82,7 @@ fn start_kalman(
             Arc::clone(&shutdown),
         )),
         None => Err(Error::StartupError(
-            "No subscribers for Imu. Start aborted.",
+            "No subscribers for Kalman. Start aborted.",
         )),
     }
 }
@@ -96,7 +96,7 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
             match data {
                 Telemetry::Acceleration(d) => {
                     println!(
-                        "Consumer{:?}: received: {}, {}, {}",
+                        "Consuming from: {:?}: received: {}, {}, {}",
                         source,
                         d.x,
                         d.y,
@@ -105,7 +105,7 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
                 }
                 Telemetry::Position(d) => {
                     println!(
-                        "Consumer{:?}: received: {}, {}, {}",
+                        "Consuming from: {:?}: received: {}, {}, {}",
                         source,
                         d.x,
                         d.y,
@@ -120,11 +120,11 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
 }
 
 fn system_shutdown(
-    map: &mut CommunicationRegistry,
+    communication_registry: &mut CommunicationRegistry,
     shutdown_trigger: Arc<AtomicBool>
 ) {
     shutdown_trigger.store(true, Ordering::SeqCst);
-    for vec in map.transmitter_registry.values_mut() {
+    for vec in communication_registry.transmitter_registry.values_mut() {
         vec.clear(); 
     }
 }
@@ -133,9 +133,7 @@ fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
-    let consumer0_handle = create_data_consumer(DataSource::Gps, &mut communication_registry);
-    let consumer1_handle = create_data_consumer(DataSource::Imu, &mut communication_registry);
-    let consumer2_handle = create_data_consumer(DataSource::Kalman, &mut communication_registry);
+    let placeholder_consumer_handle = create_data_consumer(DataSource::Kalman, &mut communication_registry);
 
     let kalman_handle = start_kalman(
         &mut communication_registry,
@@ -164,9 +162,7 @@ fn main() -> Result<(), Error> {
     imu_handle.join().unwrap();
     gps_handle.join().unwrap();
     kalman_handle.join().unwrap();
-    consumer2_handle.join().unwrap();
-    consumer1_handle.join().unwrap();
-    consumer0_handle.join().unwrap();
+    placeholder_consumer_handle.join().unwrap();
     Ok(())
 }
 
