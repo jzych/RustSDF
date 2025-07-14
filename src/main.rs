@@ -1,16 +1,23 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
-use crate::communication_registry::CommunicationRegistry;
-use crate::communication_registry::DataSource;
-use crate::data::{Data, Telemetry};
-use crate::imu::Imu;
-use crate::trajectory_generator::TrajectoryGenerator;
+use crate::{
+    communication_registry::{CommunicationRegistry, DataSource},
+    data::{Data, Telemetry},
+    imu::Imu,
+    trajectory_generator::TrajectoryGenerator,
+    gps::Gps,
+};
 
 mod communication_registry;
 pub mod data;
+mod gps;
 mod imu;
 mod trajectory_generator;
 
@@ -40,9 +47,26 @@ fn start_imu(
     }
 }
 
-fn create_data_consumer(consumer_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
+fn start_gps(
+    trajectory_data: Arc<Mutex<Data>>,
+    communication_registry: &mut CommunicationRegistry,
+    shutdown: Arc<AtomicBool>,
+) -> Result<JoinHandle<()>, Error> {
+    match communication_registry.get_registered_transmitters(DataSource::Gps) {
+        Some(transmitters) => Ok(Gps::run(
+            trajectory_data,
+            transmitters,
+            Arc::clone(&shutdown),
+        )),
+        None => Err(Error::StartupError(
+            "No subscribers for GPS. Start aborted.",
+        )),
+    }
+}
+
+fn create_data_consumer(source: DataSource, consumer_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
     let (tx, input_rx) = mpsc::channel();
-    consumer_registry.register_for_input(DataSource::Imu, tx);
+    consumer_registry.register_for_input(source, tx);
 
     let handle = thread::spawn(move || {
         for data in input_rx {
@@ -50,7 +74,7 @@ fn create_data_consumer(consumer_registry: &mut CommunicationRegistry) -> JoinHa
                 Telemetry::Acceleration(d) => {
                     println!(
                         "Consumer{:?}: received: {}, {}, {}",
-                        DataSource::Imu,
+                        source,
                         d.x,
                         d.y,
                         d.z
@@ -59,7 +83,7 @@ fn create_data_consumer(consumer_registry: &mut CommunicationRegistry) -> JoinHa
                 Telemetry::Position(d) => {
                     println!(
                         "Consumer{:?}: received: {}, {}, {}",
-                        DataSource::Gps,
+                        source,
                         d.x,
                         d.y,
                         d.z
@@ -80,11 +104,16 @@ fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
-    let consumer0_handle = create_data_consumer(&mut communication_registry);
-    let consumer1_handle = create_data_consumer(&mut communication_registry);
+    let consumer0_handle = create_data_consumer(DataSource::Gps, &mut communication_registry);
+    let consumer1_handle = create_data_consumer(DataSource::Imu, &mut communication_registry);
     let (generated_data_handle, generator_handle) =
         TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
-    let data_source_handle = start_imu(
+    let imu_handle = start_imu(
+        Arc::clone(&generated_data_handle),
+        &mut communication_registry,
+        Arc::clone(&shutdown_trigger),
+    )?;
+    let gps_handle = start_gps(
         Arc::clone(&generated_data_handle),
         &mut communication_registry,
         Arc::clone(&shutdown_trigger),
@@ -94,7 +123,8 @@ fn main() -> Result<(), Error> {
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
-    data_source_handle.join().unwrap();
+    imu_handle.join().unwrap();
+    gps_handle.join().unwrap();
     consumer1_handle.join().unwrap();
     consumer0_handle.join().unwrap();
     Ok(())
@@ -121,6 +151,20 @@ mod tests {
     }
 
     #[test]
+    fn gps_startup_without_subscriber_fails() {
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let result = start_gps(
+            Arc::clone(&generated_data_handle),
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn imu_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
@@ -130,6 +174,25 @@ mod tests {
 
         communication_registry.register_for_input(DataSource::Imu, tx);
         let result = start_imu(
+            Arc::clone(&generated_data_handle),
+            &mut communication_registry,
+            Arc::clone(&shutdown_trigger),
+        );
+
+        assert!(result.is_ok());
+        shutdown_trigger.store(true, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn gps_startup_with_subscriber_suceeds() {
+        let (tx, _) = mpsc::channel();
+        let mut communication_registry = CommunicationRegistry::new();
+        let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let (generated_data_handle, _) =
+            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+
+        communication_registry.register_for_input(DataSource::Gps, tx);
+        let result = start_gps(
             Arc::clone(&generated_data_handle),
             &mut communication_registry,
             Arc::clone(&shutdown_trigger),
