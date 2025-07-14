@@ -21,10 +21,8 @@ impl Average {
 
             while !shutdown.load(Ordering::SeqCst) {
                 if let Ok(Telemetry::Acceleration(new_data)) = rx.recv() {
-                    println!("Average filter received: {} {} {}", new_data.x, new_data.y, new_data.z);
                     Average::handle_data_buffer(&mut buffer, new_data);
                     let avg_data = Average::calculate_average(&buffer);
-                    println!("Average filter calculated: {} {} {}", avg_data.x, avg_data.y, avg_data.z);
                     tx.retain(|tx| tx.send(Telemetry::Acceleration(avg_data)).is_ok());
                 }
                 
