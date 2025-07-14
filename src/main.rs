@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
