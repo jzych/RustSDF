@@ -9,12 +9,14 @@ use std::{
 
 use once_cell::sync::Lazy;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LogEntry<T> {
     pub timestamp: SystemTime,
     pub data: T,
 }
 
+#[allow(dead_code)]
 pub struct Logger<T: Send + Clone + Debug + 'static> {
     sender: mpsc::Sender<LogEntry<T>>, 
     data_storage: Arc<Mutex<Vec<LogEntry<T>>>>,
@@ -47,6 +49,7 @@ impl<T: Send + Clone + Debug + 'static> Logger<T> {
         let _ = self.sender.send(entry);
     }
 
+    #[allow(dead_code)]
     fn get_data(&self) -> Vec<LogEntry<T>> {
         self.data_storage.lock().unwrap().clone()
     }
@@ -74,6 +77,7 @@ pub fn log<T: Send + Clone + Debug + Sync + 'static>(component_name: &str, data:
     logger.log(data);
 }
 
+#[allow(dead_code)]
 pub fn get_data<T: Send + Clone + Debug + Sync + 'static>(
     component_name: &str,
 ) -> Option<Vec<LogEntry<T>>> {
