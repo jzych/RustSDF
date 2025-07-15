@@ -30,6 +30,7 @@ mod logger;
 mod trajectory_generator;
 mod sensor_builder;
 mod utils;
+mod visualization;
 
 //Refresh rate in Hz
 const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(10).unwrap();
