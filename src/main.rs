@@ -28,6 +28,7 @@ mod imu;
 mod kalman;
 mod logger;
 mod trajectory_generator;
+mod visualization;
 
 //Refresh rate in Hz
 const GENERATOR_FREQ: f64 = 10.0;
