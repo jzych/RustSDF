@@ -92,7 +92,7 @@ fn start_avg_filter(
     shutdown: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
     let (tx, input_rx) = mpsc::channel();
-    communication_registry.register_for_input(DataSource::Imu, tx);
+    communication_registry.register_for_input(DataSource::Gps, tx);
 
     match communication_registry.get_registered_transmitters(DataSource::Average) {
         Some(transmitters) => Ok(Average::run(transmitters, input_rx, Arc::clone(&shutdown))),

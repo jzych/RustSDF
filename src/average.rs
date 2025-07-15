@@ -20,10 +20,10 @@ impl Average {
             let mut buffer = VecDeque::new();
 
             while !shutdown.load(Ordering::SeqCst) {
-                if let Ok(Telemetry::Acceleration(new_data)) = rx.recv() {
+                if let Ok(Telemetry::Position(new_data)) = rx.recv() {
                     Average::handle_data_buffer(&mut buffer, new_data);
                     let avg_data = Average::calculate_average(&buffer);
-                    tx.retain(|tx| tx.send(Telemetry::Acceleration(avg_data)).is_ok());
+                    tx.retain(|tx| tx.send(Telemetry::Position(avg_data)).is_ok());
                 }
                 
                 if tx.is_empty() {
@@ -119,9 +119,6 @@ mod test {
         Average::handle_data_buffer(&mut buffer, data);
         assert!(buffer.len() == 3);
         assert!(buffer[2].x == data.x);
-
-        buffer.clear();
-        assert!(buffer.is_empty());
 
         buffer.clear();
         assert!(buffer.is_empty());
