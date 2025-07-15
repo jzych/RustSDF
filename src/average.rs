@@ -30,6 +30,7 @@ impl Average {
                     break;
                 }
             }
+            println!("Average filter removed");
         })
     }
 
