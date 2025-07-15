@@ -1,9 +1,7 @@
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicBool, Ordering},
         mpsc::{Receiver, Sender}, 
-        Arc,
     },
     thread::{self, JoinHandle},
     time::SystemTime,
@@ -15,17 +13,16 @@ use crate::data::{Data, Telemetry};
 pub struct Average;
 
 impl Average {
-    pub fn run(mut tx: Vec<Sender<Telemetry>>, rx: Receiver<Telemetry>, shutdown: Arc<AtomicBool>) -> JoinHandle<()> {
+    pub fn run(mut tx: Vec<Sender<Telemetry>>, rx: Receiver<Telemetry>) -> JoinHandle<()> {
         thread::spawn(move || {
-            let mut buffer = VecDeque::new();
+            let buffer_size = 10;
+            let mut buffer = VecDeque::with_capacity(buffer_size);
 
-            while !shutdown.load(Ordering::SeqCst) {
-                if let Ok(Telemetry::Position(new_data)) = rx.recv() {
-                    Average::handle_data_buffer(&mut buffer, new_data);
-                    let avg_data = Average::calculate_average(&buffer);
-                    tx.retain(|tx| tx.send(Telemetry::Position(avg_data)).is_ok());
-                }
-                
+            while let Ok(Telemetry::Position(new_data)) = rx.recv() {
+                Self::handle_data_buffer(&mut buffer, new_data);
+                let avg_data = Self::calculate_average(&buffer);
+                tx.retain(|tx| tx.send(Telemetry::Position(avg_data)).is_ok());
+
                 if tx.is_empty() {
                     break;
                 }
@@ -34,7 +31,7 @@ impl Average {
         })
     }
 
-    pub fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
+    fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
         if buffer.len() < 10 {
             buffer.push_back(new_data);
         } else {
@@ -43,14 +40,13 @@ impl Average {
         }
     }
 
-    pub fn calculate_average(buffer: &VecDeque<Data>) -> Data {
-        let buffer_iter = buffer.iter();
+    fn calculate_average(buffer: &VecDeque<Data>) -> Data {
         let count = buffer.len();
         let mut sum_x: f64 = 0.0;
         let mut sum_y: f64 = 0.0;
         let mut sum_z: f64 = 0.0;
 
-        for elem in buffer_iter {
+        for elem in buffer {
             sum_x += elem.x;
             sum_y += elem.y;
             sum_z += elem.z;

@@ -89,13 +89,12 @@ fn start_kalman(
 
 fn start_avg_filter(
     communication_registry: &mut CommunicationRegistry,
-    shutdown: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
     let (tx, input_rx) = mpsc::channel();
     communication_registry.register_for_input(DataSource::Gps, tx);
 
     match communication_registry.get_registered_transmitters(DataSource::Average) {
-        Some(transmitters) => Ok(Average::run(transmitters, input_rx, Arc::clone(&shutdown))),
+        Some(transmitters) => Ok(Average::run(transmitters, input_rx)),
         None => Err(Error::StartupError(
             "No subscribers for Average filter. Start aborted.",
         )),
@@ -151,7 +150,7 @@ fn main() -> Result<(), Error> {
         &mut communication_registry,
     )?;
 
-    let avg_handle = start_avg_filter(&mut communication_registry, Arc::clone(&shutdown_trigger))?;
+    let avg_handle = start_avg_filter(&mut communication_registry)?;
     let (generated_data_handle, generator_handle) =
         TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
@@ -230,7 +229,6 @@ mod tests {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let result = start_avg_filter(
             &mut communication_registry,
-            Arc::clone(&shutdown_trigger),
         );
         assert!(result.is_err());
     }
@@ -282,7 +280,6 @@ mod tests {
         communication_registry.register_for_input(DataSource::Average, tx);
         let result = start_avg_filter(
             &mut communication_registry,
-            Arc::clone(&shutdown_trigger),
         );
 
         assert!(result.is_ok());
