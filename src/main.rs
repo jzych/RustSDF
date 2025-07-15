@@ -226,7 +226,6 @@ mod tests {
     #[test]
     fn avg_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
-        let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let result = start_avg_filter(
             &mut communication_registry,
         );
@@ -275,7 +274,6 @@ mod tests {
     fn avg_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
-        let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
         communication_registry.register_for_input(DataSource::Average, tx);
         let result = start_avg_filter(
@@ -283,7 +281,6 @@ mod tests {
         );
 
         assert!(result.is_ok());
-        shutdown_trigger.store(true, Ordering::SeqCst);
     }
 
         #[test]
