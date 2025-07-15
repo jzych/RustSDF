@@ -35,9 +35,9 @@ impl Imu {
         std::thread::spawn(move || {
             let mut imu = Imu::new(Arc::clone(&data_handle), tx, *data_handle.lock().unwrap());
             while !shutdown.load(Ordering::SeqCst) {
-                let current_position = dbg!(*imu.data_handle.lock().unwrap());
+                let current_position = *imu.data_handle.lock().unwrap();
 
-                let acceleration = dbg!(calculate_acceleration(&imu.prev_position, &current_position));
+                let acceleration = calculate_acceleration(&imu.prev_position, &current_position);
                 imu.prev_position = current_position;
 
                 imu.tx.retain(|tx| tx.send(acceleration).is_ok());
