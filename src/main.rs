@@ -13,18 +13,21 @@ use crate::{
     data::{Data, Telemetry},
     gps::Gps,
     imu::Imu,
-    trajectory_generator::TrajectoryGenerator,
     kalman::KalmanFilter,
+    logger::{get_data, log},
+    trajectory_generator::TrajectoryGenerator,
 };
+
+use chrono::{DateTime, Local};
 
 mod average;
 mod communication_registry;
 pub mod data;
 mod gps;
 mod imu;
+mod kalman;
 mod logger;
 mod trajectory_generator;
-mod kalman;
 
 //Refresh rate in Hz
 const GENERATOR_FREQ: f64 = 10.0;
@@ -78,10 +81,7 @@ fn start_kalman(
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
 
     match communication_registry.get_registered_transmitters(DataSource::Kalman) {
-        Some(transmitters) => Ok(KalmanFilter::run(
-            transmitters,
-            input_rx,
-        )),
+        Some(transmitters) => Ok(KalmanFilter::run(transmitters, input_rx)),
         None => Err(Error::StartupError(
             "No subscribers for Kalman. Start aborted.",
         )),
@@ -102,9 +102,14 @@ fn start_avg_filter(
     }
 }
 
-fn create_data_consumer(source: DataSource, consumer_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
+fn create_data_consumer(
+    source: DataSource,
+    consumer_registry: &mut CommunicationRegistry,
+) -> JoinHandle<()> {
     let (tx, input_rx) = mpsc::channel();
     consumer_registry.register_for_input(source, tx);
+
+    log("Consumers", source);
 
     let handle = thread::spawn(move || {
         for data in input_rx {
@@ -112,19 +117,13 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
                 Telemetry::Acceleration(d) => {
                     println!(
                         "Consuming from: {:?}: received: {}, {}, {}",
-                        source,
-                        d.x,
-                        d.y,
-                        d.z
+                        source, d.x, d.y, d.z
                     )
                 }
                 Telemetry::Position(d) => {
                     println!(
                         "Consuming from: {:?}: received: {}, {}, {}",
-                        source,
-                        d.x,
-                        d.y,
-                        d.z
+                        source, d.x, d.y, d.z
                     )
                 }
             }
@@ -134,9 +133,7 @@ fn create_data_consumer(source: DataSource, consumer_registry: &mut Communicatio
     handle
 }
 
-fn system_shutdown(
-    shutdown_trigger: Arc<AtomicBool>
-) {
+fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
     shutdown_trigger.store(true, Ordering::SeqCst);
 }
 
@@ -144,12 +141,11 @@ fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
-    let placeholder_consumer_handle = create_data_consumer(DataSource::Kalman, &mut communication_registry);
+    let placeholder_consumer_handle =
+        create_data_consumer(DataSource::Kalman, &mut communication_registry);
     let consumer3_handle = create_data_consumer(DataSource::Average, &mut communication_registry);
 
-    let kalman_handle = start_kalman(
-        &mut communication_registry,
-    )?;
+    let kalman_handle = start_kalman(&mut communication_registry)?;
 
     let avg_handle = start_avg_filter(&mut communication_registry)?;
     let (generated_data_handle, generator_handle) =
@@ -166,9 +162,7 @@ fn main() -> Result<(), Error> {
     )?;
 
     thread::sleep(Duration::from_secs(6));
-    system_shutdown(
-            Arc::clone(&shutdown_trigger),
-    );
+    system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
     imu_handle.join().unwrap();
@@ -177,6 +171,21 @@ fn main() -> Result<(), Error> {
     avg_handle.join().unwrap();
     placeholder_consumer_handle.join().unwrap();
     consumer3_handle.join().unwrap();
+
+    let consumers = get_data::<DataSource>("Consumers");
+
+    if let Some(data) = consumers {
+        for entry in data {
+            let date_time: DateTime<Local> = entry.timestamp.into();
+            println!(
+                "Consumer created at: {}, who: {:?}",
+                date_time.format("%Y-%m-%d %H:%M:%S"),
+                entry.data
+            );
+        }
+    } else {
+        println!("No consumers created.");
+    }
 
     Ok(())
 }
@@ -215,21 +224,17 @@ mod tests {
         assert!(result.is_err());
     }
 
-        #[test]
+    #[test]
     fn kalman_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
-        let result = start_kalman(
-            &mut communication_registry,
-        );
+        let result = start_kalman(&mut communication_registry);
         assert!(result.is_err());
     }
 
     #[test]
     fn avg_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
-        let result = start_avg_filter(
-            &mut communication_registry,
-        );
+        let result = start_avg_filter(&mut communication_registry);
         assert!(result.is_err());
     }
 
@@ -270,29 +275,25 @@ mod tests {
         assert!(result.is_ok());
         shutdown_trigger.store(true, Ordering::SeqCst);
     }
-    
+
     #[test]
     fn avg_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
 
         communication_registry.register_for_input(DataSource::Average, tx);
-        let result = start_avg_filter(
-            &mut communication_registry,
-        );
+        let result = start_avg_filter(&mut communication_registry);
 
         assert!(result.is_ok());
     }
 
-        #[test]
+    #[test]
     fn kalman_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
-        
+
         communication_registry.register_for_input(DataSource::Kalman, tx);
-        let result = start_kalman(
-            &mut communication_registry,
-        );
+        let result = start_kalman(&mut communication_registry);
 
         assert!(result.is_ok());
     }
@@ -314,9 +315,7 @@ mod tests {
         );
 
         thread::sleep(Duration::from_secs(2));
-        system_shutdown(
-            Arc::clone(&shutdown_trigger)
-        );
+        system_shutdown(Arc::clone(&shutdown_trigger));
         test_producer_handle.unwrap().join().unwrap();
 
         let received: Vec<_> = rx.try_iter().collect();
