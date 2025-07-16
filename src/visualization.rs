@@ -1,8 +1,7 @@
 use crate::{
-    data::{Data, Telemetry},
-    imu,
+    data::{Data, Telemetry}, gps, imu
 };
-use plotters::{data, prelude::*};
+use plotters::{data, prelude::*, style::full_palette::GREEN_300};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -21,11 +20,23 @@ use plotters::coord::Shift;
 pub struct Visualization;
 
 impl Visualization {
-    pub fn run(rx_avg: Receiver<Telemetry>, rx_kalman: Receiver<Telemetry>) -> JoinHandle<()> {
+    pub fn run(rx_avg: Receiver<Telemetry>, rx_kalman: Receiver<Telemetry>, rx_gps: Receiver<Telemetry>) -> JoinHandle<()> {
         let mut avg_data = Vec::new();
         let mut kalman_data = Vec::new();
+        let mut gps_data = Vec::new();
 
         let handle = thread::spawn(move || {
+            for data in rx_gps {
+                match data {
+                    Telemetry::Position(d) => {
+                        gps_data.push(d);
+                    }
+                    Telemetry::Acceleration(d) => {
+                        //avg_data.push(data);
+                    }
+                }
+            }
+
             for data in rx_avg {
                 match data {
                     Telemetry::Position(d) => {
@@ -47,8 +58,8 @@ impl Visualization {
                     }
                 }
             }
-
-            draw(avg_data, kalman_data);
+            println!("Len avg = {} kalman = {} gps = {}", avg_data.len(), kalman_data.len(), gps_data.len());
+            draw(avg_data, kalman_data, gps_data);
             println!("Visualization removed");
         });
         handle
@@ -65,14 +76,14 @@ fn select_xyz(coord_to_plot: &str, p: Data) -> f64 {
     }
 }
 
-fn create_plot(root: DrawingArea<BitMapBackend<'_>, Shift>, coord_to_plot: &str, avg_data: &Vec<Data>, kalman_data: &Vec<Data>) {
+fn create_plot(root: DrawingArea<BitMapBackend<'_>, Shift>, coord_to_plot: &str, avg_data: &Vec<Data>, kalman_data: &Vec<Data>, gps_data: &Vec<Data>) {
 
-    let plot_start = avg_data[0]
+    let plot_start = gps_data[0]
         .timestamp
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as f64;
-    let plot_stop = avg_data
+    let plot_stop = gps_data
         .last()
         .unwrap()
         .timestamp
@@ -85,7 +96,7 @@ fn create_plot(root: DrawingArea<BitMapBackend<'_>, Shift>, coord_to_plot: &str,
         .y_label_area_size(60)
         .right_y_label_area_size(60)
         .margin_bottom(30)
-        .build_cartesian_2d(plot_start..plot_stop, 0f64..100f64)
+        .build_cartesian_2d(plot_start..plot_stop, 0f64..200f64)
         .unwrap();
 
     chart
@@ -124,6 +135,20 @@ fn create_plot(root: DrawingArea<BitMapBackend<'_>, Shift>, coord_to_plot: &str,
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
 
     chart
+        .draw_series(LineSeries::new(
+            gps_data.iter().map(|p| {
+                (
+                    p.timestamp.duration_since(UNIX_EPOCH).unwrap().as_millis() as f64,
+                    select_xyz(coord_to_plot, *p),
+                )
+            }),
+            &GREEN,
+        ))
+        .unwrap()
+        .label("GPS real data")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN));
+
+    chart
         .configure_series_labels()
         .border_style(BLACK)
         .background_style(WHITE.mix(0.0))
@@ -131,7 +156,7 @@ fn create_plot(root: DrawingArea<BitMapBackend<'_>, Shift>, coord_to_plot: &str,
         .unwrap()
 }
 
-fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>) {
+fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>) {
     let sensor_name = "TODO";
     let complete_plot_name = format!("output/{sensor_name}.png"); //TODO:add error handling if dir is not available?
 
@@ -146,9 +171,9 @@ fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>) {
     let (_, lower_1) = split_in_3[1].split_vertically(40);
     let (_, lower_2) = split_in_3[2].split_vertically(40);
 
-    create_plot(lower_0, "x", &avg_data, &kalman_data);
-    create_plot(lower_1, "y", &avg_data, &kalman_data);
-    create_plot(lower_2, "z", &avg_data, &kalman_data);
+    create_plot(lower_0, "x", &avg_data, &kalman_data, &gps_data);
+    create_plot(lower_1, "y", &avg_data, &kalman_data, &gps_data);
+    create_plot(lower_2, "z", &avg_data, &kalman_data, &gps_data);
 }
 
 #[cfg(test)]
