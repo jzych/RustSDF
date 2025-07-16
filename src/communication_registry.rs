@@ -11,6 +11,7 @@ pub enum DataSource {
     Gps,
     Kalman,
     Average,
+    Visualization,
 }
 
 pub struct CommunicationRegistry {
