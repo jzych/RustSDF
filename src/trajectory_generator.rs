@@ -1,9 +1,9 @@
 use crate::data::Data;
-use rand::Rng;
+use noise::{NoiseFn, Perlin};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub struct TrajectoryGenerator {
     data_handle: Arc<Mutex<Data>>,
@@ -22,11 +22,21 @@ impl TrajectoryGenerator {
     }
 
     fn generate_data() -> Data {
-        let mut rng = rand::rng();
+        let perlin = Perlin::new(2137); // replace with static version?
+
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs_f64();
+
+        let x = upscale(perlin.get([secs, 0.0, 0.0]));
+        let y = upscale(perlin.get([0.0, secs, 0.0]));
+        let z = upscale(perlin.get([0.0, 0.0, secs]));
+
         Data {
-            x: rng.random_range(0.0..=100.0),
-            y: rng.random_range(0.0..=100.0),
-            z: rng.random_range(0.0..=100.0),
+            x,
+            y,
+            z,
             timestamp: SystemTime::now(),
         }
     }
@@ -52,6 +62,11 @@ impl TrajectoryGenerator {
 
         (Arc::clone(&data_handle), generator_handle)
     }
+}
+
+#[inline]
+fn upscale(perlin_value: f64) -> f64 {
+    (perlin_value + 1.0) * 50.0
 }
 
 #[cfg(test)]
