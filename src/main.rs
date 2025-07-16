@@ -115,10 +115,12 @@ fn start_visualization(
 ) -> JoinHandle<()>  {
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
+    let (tx_gps, rx_gps) = mpsc::channel();
     communication_registry.register_for_input(DataSource::Average, tx_avg);
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
+    communication_registry.register_for_input(DataSource::Gps, tx_gps);
 
-    Visualization::run(rx_avg, rx_kalman)
+    Visualization::run(rx_avg, rx_kalman, rx_gps)
 
 }
 
@@ -197,7 +199,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    thread::sleep(Duration::from_secs(6));
+    thread::sleep(Duration::from_secs(20));
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
