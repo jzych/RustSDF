@@ -9,9 +9,9 @@ use std::sync::mpsc::{Receiver, Sender};
 
 
 
-const DT_IMU : f64 = 0.5; // seconds
-const TIMING_TOLERANCE : f64 = 0.01; // 1% of timing tolerance
-const SIGMA_ACC : f64 = 0.01;
+const DT_IMU : f64 = 0.1; // seconds
+const TIMING_TOLERANCE : f64 = 0.02; // 0.01 = 1% of timing tolerance
+const SIGMA_ACC : f64 = 0.1;
 const SIGMA_GPS : f64 = 0.1;
 
 
@@ -73,59 +73,145 @@ impl KalmanFilter {
     ) -> JoinHandle<()> {
         let mut state: KalmanData = KalmanData::new();
         let mut kalman = KalmanFilter::new(tx);
-        let mut drop_sample: bool = false;
+        let imu_samples_to_skip : u32 = 3;
+        let mut imu_samples_received : u32 = 0;
+        let mut last_imu_data_timestamp = SystemTime::now();
+        let mut gps_samples_received : u32 = 0;
+        let mut prev_gps_data : Data = Data::new();
 
         std::thread::spawn( move || {
-            let mut last_imu_data_timestamp = SystemTime::now().checked_sub(Duration::from_secs_f64(DT_IMU)).unwrap();
-            for telemetry in rx {
-                match telemetry {                    
-                    Telemetry::Acceleration(data) => {
-                        let current_imu_data_timestamp = SystemTime::now();
-                        let imu_elapsed: Duration = current_imu_data_timestamp.duration_since(last_imu_data_timestamp).unwrap(); 
+            
 
-                        if imu_elapsed >= Duration::from_secs_f64(DT_IMU * (1.0 - TIMING_TOLERANCE)) {
+            for telemetry in rx {
+
+                if telemetry_check(
+                    imu_samples_to_skip,
+                    &mut imu_samples_received,
+                    telemetry,
+                    &mut last_imu_data_timestamp,
+                    &mut gps_samples_received,
+                    &mut state,
+                    &mut prev_gps_data
+                ) {
+                    match telemetry {                    
+                        Telemetry::Acceleration(data) => {
                             // prediction
+                            println!(
+                                "Kalman received IMU data: {}, {}, {}",
+                                data.x, data.y, data.z
+                            );
                             let u = Matrix3x1::new(data.x, data.y, data.z);
                             state.x = kalman.A * kalman.previous_kalman_state.x + kalman.B * u;
                             state.P = kalman.A * kalman.previous_kalman_state.P * kalman.A.transpose() + kalman.Q;
-                        } else if imu_elapsed > Duration::from_secs_f64(0.0) {
-                            drop_sample = true;
                         }
-                        if imu_elapsed > Duration::from_secs_f64(DT_IMU * (1.0 + TIMING_TOLERANCE)) {
-                            eprintln!("Kalman: IMU data is late! Previous data obtained {}s {}ms ago. ",
-                                imu_elapsed.as_secs(),
-                                imu_elapsed.subsec_millis()
+                        Telemetry::Position(data) => {
+                            // correction
+                            println!(
+                                "Kalman received GPS data: {}, {}, {}",
+                                data.x, data.y, data.z
                             );
-                        }
-                        last_imu_data_timestamp = SystemTime::now();
+                            let z = Matrix3x1::new(data.x, data.y, data.z);
+                            let K = state.P * kalman.H.transpose() * (kalman.H * state.P * kalman.H.transpose() + kalman.R).try_inverse().unwrap();
+                            state.x = state.x + K * (z - kalman.H * state.x);
+                            state.P = (Matrix6::identity_generic(Const::<6>,Const::<6>) - K * kalman.H) * state.P;
+                        },
                     }
-                    Telemetry::Position(data) => {
-                        // correction
-                        let z = Matrix3x1::new(data.x, data.y, data.z);
-                        let K = state.P * kalman.H.transpose() * (kalman.H * state.P * kalman.H.transpose() + kalman.R).try_inverse().unwrap();
-                        state.x = state.x + K * (z - kalman.H * state.x);
-                        state.P = (Matrix6::identity_generic(Const::<6>,Const::<6>) - K * kalman.H) * state.P;
-                    },
-                }
-                
-                kalman.previous_kalman_state = state;
-                let kalman_position_estimate = Telemetry::Position(Data {
-                    x: state.x[0],
-                    y: state.x[1],
-                    z: state.x[2],
-                    timestamp: SystemTime::now()
-                });
-
-                if !drop_sample {
+                    
+                    kalman.previous_kalman_state = state;
+                    let kalman_position_estimate = Telemetry::Position(Data {
+                        x: state.x[0],
+                        y: state.x[1],
+                        z: state.x[2],
+                        timestamp: SystemTime::now()
+                    });
+                    
                     kalman.tx.retain(|tx| tx.send(kalman_position_estimate).is_ok());
                     if kalman.tx.is_empty() {
                         break;
                     }
                 }
-                drop_sample = false;
             }
             println!("Kalman filter removed");
-        })        
+        })
+    }   
+}
+
+
+
+
+fn telemetry_check(
+    imu_samples_to_skip: u32,
+    imu_samples_received: &mut u32,
+    telemetry: Telemetry,
+    last_imu_data_timestamp: &mut SystemTime,
+    gps_samples_received: &mut u32,
+    state: &mut KalmanData,
+    prev_gps_data: &mut Data,
+) -> bool {
+    match telemetry {                    
+        Telemetry::Acceleration(_) => {
+            let current_imu_data_timestamp = SystemTime::now();
+            let imu_elapsed: Duration = current_imu_data_timestamp.duration_since(*last_imu_data_timestamp).unwrap(); 
+            *last_imu_data_timestamp = current_imu_data_timestamp;
+            *imu_samples_received += 1;
+
+            if *imu_samples_received < imu_samples_to_skip {
+                false
+            }
+            else if *gps_samples_received < 2 {
+                false
+            } else {
+                if imu_elapsed > Duration::from_secs_f64(DT_IMU * (1.0 + TIMING_TOLERANCE)) {
+                    eprintln!("Kalman: IMU data is late! Previous data obtained {}s {:03}ms ago. ",
+                        imu_elapsed.as_secs(),
+                        imu_elapsed.subsec_millis()
+                    );
+                    true
+                } else if imu_elapsed >= Duration::from_secs_f64(DT_IMU * (1.0 - TIMING_TOLERANCE)) {
+                    true
+                } else if imu_elapsed > Duration::from_secs_f64(0.0) {
+                    eprintln!("Kalman: IMU data received too soon! Previous data obtained {}s {:03}ms ago. ",
+                        imu_elapsed.as_secs(),
+                        imu_elapsed.subsec_millis()
+                    );
+                    false
+                } else {
+                    eprintln!("Kalman: Time inversion");
+                    false
+                }
+            }
+        }
+        Telemetry::Position(data) => {
+            *gps_samples_received += 1;
+            
+            if *gps_samples_received < 2 {
+                *prev_gps_data = data;
+                false
+            } else if *gps_samples_received == 2 {
+                let delta_time = data.timestamp.duration_since(prev_gps_data.timestamp).unwrap().as_secs_f64();
+                (*state).x[0] = data.x;
+                (*state).x[1] = data.y;
+                (*state).x[2] = data.z;
+                (*state).x[3] = (data.x - prev_gps_data.x)/delta_time;
+                (*state).x[4] = (data.y - prev_gps_data.y)/delta_time;
+                (*state).x[5] = (data.z - prev_gps_data.z)/delta_time;
+                println!("Kalman: Initial position from GPS data: {}, {}, {}",
+                    (*state).x[0],
+                    (*state).x[1],
+                    (*state).x[2]
+                );
+                println!("Kalman: Initial velocity from GPS data: {}, {}, {}",
+                    (*state).x[3],
+                    (*state).x[4],
+                    (*state).x[5]
+                );
+                false
+            } else if *imu_samples_received <= imu_samples_to_skip {
+                false
+            } else {
+                true
+            }
+        }
     }
 }
 
@@ -175,6 +261,7 @@ fn create_matrix_R(sigma_gps: f64) -> Matrix3<f64> {
     let R = Matrix3::<f64>::identity_generic(Const::<3>, Const::<3>);
     R*sigma_gps
 }
+
 
 #[cfg(test)]
 mod test {
