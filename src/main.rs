@@ -30,7 +30,7 @@ mod logger;
 mod trajectory_generator;
 
 //Refresh rate in Hz
-const GENERATOR_FREQ: f64 = 500.0;
+const GENERATOR_FREQ: f64 = 20.0;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -163,6 +163,7 @@ fn main() -> Result<(), Error> {
     let kalman_handle = start_kalman(&mut communication_registry)?;
 
     let avg_handle = start_avg_filter(&mut communication_registry)?;
+
     let imu_handle = start_imu(
         Arc::clone(&generated_data_handle),
         &mut communication_registry,
@@ -174,7 +175,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(1));
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();

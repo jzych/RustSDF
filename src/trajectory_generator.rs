@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub struct TrajectoryGenerator {
     data_handle: Arc<Mutex<Data>>,
     shutdown_trigger: Arc<AtomicBool>,
+    start_time: SystemTime,
 }
 
 impl TrajectoryGenerator {
@@ -18,10 +19,11 @@ impl TrajectoryGenerator {
         TrajectoryGenerator {
             data_handle,
             shutdown_trigger,
+            start_time: SystemTime::now(),
         }
     }
 
-    fn generate_data() -> Data {
+    fn generate_data(elapsed :f64) -> Data {
         let perlin = Perlin::new(2137); // replace with static version?
 
         let secs = SystemTime::now()
@@ -29,9 +31,21 @@ impl TrajectoryGenerator {
             .expect("Time went backwards")
             .as_secs_f64();
 
-        let x = upscale(perlin.get([secs, 0.0, 0.0]));
-        let y = upscale(perlin.get([0.0, secs, 0.0]));
-        let z = upscale(perlin.get([0.0, 0.0, secs]));
+        // let x = upscale(perlin.get([secs, 0.0, 0.0]));
+        // let y = upscale(perlin.get([0.0, secs, 0.0]));
+        // let z = upscale(perlin.get([0.0, 0.0, secs]));
+
+
+        let x =  elapsed.sin();
+        let y =  elapsed.cos()-1.0;
+        let z =  0.0;
+        println!(
+            "Traj gen: {}, {}, {}, at elapsed seconds: {}",
+            x,
+            y,
+            z,
+            elapsed
+        );
 
         Data {
             x,
@@ -52,7 +66,8 @@ impl TrajectoryGenerator {
         let generator_handle = std::thread::spawn(move || {
             while !generator.shutdown_trigger.load(Ordering::SeqCst) {
                 {
-                    *generator.data_handle.lock().unwrap() = TrajectoryGenerator::generate_data();
+                    let elapsed = SystemTime::now().duration_since(generator.start_time).unwrap().as_secs_f64();
+                    *generator.data_handle.lock().unwrap() = TrajectoryGenerator::generate_data(elapsed);
                 }
 
                 std::thread::sleep(Duration::from_secs_f64(period));
