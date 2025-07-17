@@ -1,137 +1,185 @@
 use crate::data::{Data, Telemetry};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
-use std::time::Duration;
-
-pub struct Imu {
-    tx: Vec<Sender<Telemetry>>,
-    data_handle: Arc<Mutex<Data>>,
-    prev_position: Data,
-}
+use nalgebra::Vector3;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::Sender,
+        Arc, Mutex,
+    },
+    thread::JoinHandle,
+    time::{Duration, SystemTimeError},
+};
 
 //Refresh rate in Hz
 const REFRESH_FREQ: u32 = 2;
 
-impl Imu {
-    fn new(
-        data_handle: Arc<Mutex<Data>>,
-        tx: Vec<Sender<Telemetry>>,
-        initial_position: Data,
-    ) -> Imu {
-        Imu {
-            tx,
-            data_handle,
-            prev_position: initial_position,
-        }
-    }
+pub struct Imu {
+    tx: Vec<Sender<Telemetry>>,
+    position_data: Arc<Mutex<Data>>,
+    prev_position: Data,
+    prev_velocity: Vector3<f64>,
+    last_valid_acceleration: Vector3<f64>,
+}
 
+impl Imu {
     pub fn run(
-        data_handle: Arc<Mutex<Data>>,
+        position_data: Arc<Mutex<Data>>,
         tx: Vec<Sender<Telemetry>>,
         shutdown: Arc<AtomicBool>,
     ) -> JoinHandle<()> {
+        let mut imu = Imu::new(
+            Arc::clone(&position_data),
+            tx,
+            *position_data.lock().unwrap(),
+        );
         std::thread::spawn(move || {
-            let mut imu = Imu::new(Arc::clone(&data_handle), tx, *data_handle.lock().unwrap());
-            while !shutdown.load(Ordering::SeqCst) {
-                let current_position = *imu.data_handle.lock().unwrap();
-
-                let acceleration = calculate_acceleration(&imu.prev_position, &current_position);
-                imu.prev_position = current_position;
-
-                imu.tx.retain(|tx| tx.send(acceleration).is_ok());
-                if imu.tx.is_empty() {
+            while should_run(&shutdown, &imu.tx) {
+                if let Err(e) = imu.step() {
+                    eprintln!("Imu internal error: {e}. Aborting.");
                     break;
-                }
+                };
                 std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
             }
             println!("Imu removed");
         })
     }
-}
 
-fn calculate_acceleration(previous_position: &Data, current_position: &Data) -> Telemetry {
-    let delta_time = current_position
-        .timestamp
-        .duration_since(previous_position.timestamp)
-        .expect("Clock may have gone backwards");
-
-    let a_x = calculate_axis_acceleration(previous_position.x, current_position.x, &delta_time);
-    let a_y = calculate_axis_acceleration(previous_position.y, current_position.y, &delta_time);
-    let a_z = calculate_axis_acceleration(previous_position.z, current_position.z, &delta_time);
-    Telemetry::Acceleration(Data {
-        x: a_x,
-        y: a_y,
-        z: a_z,
-        timestamp: current_position.timestamp,
-    })
-}
-
-///
-/// acceleration calculated from s=(at^2)/2 equation
-///
-fn calculate_axis_acceleration(
-    prev_position: f64,
-    curr_position: f64,
-    delta_time: &Duration,
-) -> f64 {
-    if *delta_time == Duration::new(0, 0) {
-        return 0.0;
+    fn new(
+        position_data: Arc<Mutex<Data>>,
+        tx: Vec<Sender<Telemetry>>,
+        initial_position: Data,
+    ) -> Imu {
+        Imu {
+            tx,
+            position_data,
+            prev_position: initial_position,
+            prev_velocity: Vector3::new(0.0, 0.0, 0.0),
+            last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
+        }
     }
-    (2.0 * (curr_position - prev_position)) / delta_time.as_secs_f64().powf(2.0)
+
+    fn step(&mut self) -> Result<(), SystemTimeError> {
+        let current_position = *self.position_data.lock().unwrap();
+
+        let delta_time = current_position
+            .timestamp
+            .duration_since(self.prev_position.timestamp)?;
+
+        let current_velocity = if delta_time.is_zero() {
+            self.prev_velocity
+        } else {
+            calculate_velocity(&self.prev_position, &current_position, &delta_time)
+        };
+
+        let acceleration = if delta_time.is_zero() {
+            self.last_valid_acceleration
+        } else {
+            calculate_acceleration(&self.prev_velocity, &current_velocity, &delta_time)
+        };
+
+        self.prev_velocity = current_velocity;
+        self.prev_position = current_position;
+        self.last_valid_acceleration = acceleration;
+
+        let data_to_send = Data {
+            x: acceleration.x,
+            y: acceleration.y,
+            z: acceleration.z,
+            timestamp: current_position.timestamp,
+        };
+
+        self.send_data(data_to_send);
+        Ok(())
+    }
+
+    fn send_data(&mut self, data: Data) {
+        self.tx
+            .retain(|tx| tx.send(Telemetry::Acceleration(data)).is_ok());
+    }
+}
+
+fn should_run(shutdown_flag: &Arc<AtomicBool>, transmitters: &[Sender<Telemetry>]) -> bool {
+    !shutdown_flag.load(Ordering::SeqCst) && !transmitters.is_empty()
+}
+
+fn calculate_velocity(
+    prev_position: &Data,
+    current_position: &Data,
+    delta_time: &Duration,
+) -> Vector3<f64> {
+    let x = (current_position.x - prev_position.x) / delta_time.as_secs_f64();
+    let y = (current_position.y - prev_position.y) / delta_time.as_secs_f64();
+    let z = (current_position.z - prev_position.z) / delta_time.as_secs_f64();
+    Vector3::new(x, y, z)
+}
+
+fn calculate_acceleration(
+    prev_velocity: &Vector3<f64>,
+    current_velocity: &Vector3<f64>,
+    delta_time: &Duration,
+) -> Vector3<f64> {
+    (current_velocity - prev_velocity) / delta_time.as_secs_f64()
 }
 
 fn get_cycle_duration(frequency: u32) -> Duration {
-    if frequency == 0 {
-        panic!("Frequency cannot be set to zero");
-    }
+    assert!(frequency != 0);
     Duration::from_secs_f64(1.0 / frequency as f64)
 }
 
 #[cfg(test)]
 mod test {
-    use crate::trajectory_generator::TrajectoryGenerator;
+    use ntest_timeout::timeout;
     use std::{sync::mpsc, time::SystemTime};
 
     use super::*;
 
     #[test]
-    fn axis_acceleration_calculation() {
-        let start_position = 0.0;
-        let finish_position = 1.0;
-        let time_elapsed = Duration::from_secs_f64(1.0);
-        let expected_acceleration = 2.0;
+    fn given_zero_initial_velocity_expect_correct_acceleration_calculation() {
+        let initial_velocity = Vector3::new(0.0, 0.0, 0.0);
+        let final_velocity = Vector3::new(1.0, 2.0, 3.0);
+        let delta_time = Duration::from_secs(1);
+        let expected_acceleration = Vector3::new(1.0, 2.0, 3.0);
 
-        approx::assert_abs_diff_eq!(
-            calculate_axis_acceleration(start_position, finish_position, &time_elapsed),
-            expected_acceleration
-        );
+        let results = calculate_acceleration(&initial_velocity, &final_velocity, &delta_time);
+        for (result, expected) in results.iter().zip(expected_acceleration.iter()) {
+            approx::assert_abs_diff_eq!(result, expected);
+        }
     }
 
     #[test]
-    fn acceleration_calculation_for_3d() {
-        let current_time = SystemTime::now();
-        let start = Data {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            timestamp: current_time,
-        };
-        let finish = Data {
+    fn given_nonzero_initial_velocity_expect_correct_acceleration_calculation() {
+        let initial_velocity = Vector3::new(0.5, 3.0, 1.0);
+        let final_velocity = Vector3::new(1.0, 2.0, 3.0);
+        let delta_time = Duration::from_secs(2);
+        let expected_acceleration = Vector3::new(0.25, -0.5, 1.0);
+
+        let results = calculate_acceleration(&initial_velocity, &final_velocity, &delta_time);
+        for (result, expected) in results.iter().zip(expected_acceleration.iter()) {
+            approx::assert_abs_diff_eq!(result, expected);
+        }
+    }
+
+    #[test]
+    fn given_two_positions_expect_valid_velocity_calculated() {
+        let initial_position = Data {
             x: 1.0,
             y: 2.0,
-            z: 3.0,
-            timestamp: current_time + Duration::from_secs(1),
+            z: 5.0,
+            timestamp: SystemTime::now(),
         };
+        let final_position = Data {
+            x: 2.0,
+            y: 0.0,
+            z: 5.0,
+            timestamp: SystemTime::now(),
+        };
+        let delta_time = Duration::from_secs_f64(2.0);
+        let expected_velocity = Vector3::new(0.5, -1.0, 0.0);
 
-        let Telemetry::Acceleration(result) = calculate_acceleration(&start, &finish) else {
-            panic!("Expected acceleration");
-        };
-        approx::assert_abs_diff_eq!(result.x, 2.0);
-        approx::assert_abs_diff_eq!(result.y, 4.0);
-        approx::assert_abs_diff_eq!(result.z, 6.0);
-        assert_eq!(finish.timestamp, result.timestamp);
+        let result = calculate_velocity(&initial_position, &final_position, &delta_time);
+        for (result, expected) in result.iter().zip(expected_velocity.iter()) {
+            approx::assert_abs_diff_eq!(result, expected);
+        }
     }
 
     #[test]
@@ -151,11 +199,10 @@ mod test {
     #[test]
     fn given_rx_goes_out_of_scope_imu_shuts_down() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _) =
-            TrajectoryGenerator::run(5.0, Arc::clone(&shutdown_trigger));
+        let position_data = Arc::new(Mutex::new(Data::new()));
         let (tx, rx) = mpsc::channel();
         let imu = Imu::run(
-            Arc::clone(&generated_data_handle),
+            Arc::clone(&position_data),
             vec![tx],
             Arc::clone(&shutdown_trigger),
         );
@@ -164,51 +211,142 @@ mod test {
     }
 
     #[test]
-    fn given_two_samples_with_the_same_time_expect_no_acceleration() {
-        let position_data = Arc::new(Mutex::new(Data::new()));
-        position_data.lock().unwrap().x = 1.2;
-        let (tx, rx) = mpsc::channel();
+    fn given_no_shutdown_signal_and_transmitters_presend_expect_run() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let imu = Imu::run(
-            Arc::clone(&position_data),
-            vec![tx],
-            Arc::clone(&shutdown_trigger),
-        );
-            
-        position_data.lock().unwrap().x = 0.2;
-        std::thread::sleep(get_cycle_duration(REFRESH_FREQ) + Duration::from_millis(50));
-
-        let Telemetry::Acceleration(acc) = rx.recv().unwrap() else {
-            panic!("IMU cannot return position");
-        };
-
-        assert_eq!(acc.x, 0.0);
-        shutdown_trigger.store(true, Ordering::SeqCst);
-        imu.join().unwrap();
+        let (tx, _) = mpsc::channel();
+        assert!(should_run(&shutdown_trigger, &[tx]));
     }
 
     #[test]
-    fn smoke_test_if_main_loop_does_not_crash() {
+    fn given_shutdown_signal_expect_stop() {
+        let shutdown_trigger = Arc::new(AtomicBool::new(true));
+        let (tx, _) = mpsc::channel();
+        assert!(!should_run(&shutdown_trigger, &[tx]));
+    }
+
+    #[test]
+    fn given_no_transmitters_signal_expect_stop() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _) =
-            TrajectoryGenerator::run(5.0, Arc::clone(&shutdown_trigger));
+        let empty: Vec<Sender<Telemetry>> = Vec::new();
+        assert!(!should_run(&shutdown_trigger, &empty));
+    }
+
+    #[test]
+    fn test_step() {
+        let position_data = Arc::new(Mutex::new(Data::new()));
         let (tx, rx) = mpsc::channel();
-        let imu = Imu::run(
-            Arc::clone(&generated_data_handle),
-            vec![tx],
-            Arc::clone(&shutdown_trigger),
-        );
-        std::thread::sleep(Duration::from_secs(1));
-        let acceleration = rx.recv().unwrap();
-        match acceleration {
-            Telemetry::Acceleration(data) => {
-                assert_eq!(data.y, 0.0);
-                assert_eq!(data.x, 0.0);
-                assert_eq!(data.z, 0.0);
-            }
-            Telemetry::Position(_) => panic!("IMU cannot return position"),
+        let mut imu = Imu {
+            tx: vec![tx],
+            position_data: Arc::clone(&position_data),
+            prev_position: *position_data.lock().unwrap(),
+            prev_velocity: Vector3::new(0.0, 0.0, 0.0),
+            last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
+        };
+
+        {
+            let mut position_data = position_data.lock().unwrap();
+            position_data.x = 1.0;
+            position_data.y = 2.0;
+            position_data.z = 3.0;
+            position_data.timestamp += Duration::from_secs(1);
         }
-        shutdown_trigger.store(true, Ordering::SeqCst);
+        assert!(imu.step().is_ok());
+
+        let Telemetry::Acceleration(acc) = rx.recv().unwrap() else {
+            panic!("Cannot return position!");
+        };
+        approx::assert_abs_diff_eq!(acc.x, 1.0);
+        approx::assert_abs_diff_eq!(acc.y, 2.0);
+        approx::assert_abs_diff_eq!(acc.z, 3.0);
+
+        {
+            let mut position_data = position_data.lock().unwrap();
+            position_data.x = 1.5;
+            position_data.y = 1.5;
+            position_data.z = 2.0;
+            position_data.timestamp += Duration::from_secs(1);
+        }
+
+        assert!(imu.step().is_ok());
+        let Telemetry::Acceleration(acc) = rx.recv().unwrap() else {
+            panic!("Cannot return position!");
+        };
+        approx::assert_abs_diff_eq!(acc.x, -0.5);
+        approx::assert_abs_diff_eq!(acc.y, -2.5);
+        approx::assert_abs_diff_eq!(acc.z, -4.0);
+    }
+
+    #[test]
+    fn given_next_timestamp_is_behind_previous_expect_run_to_return_err() {
+        let initial_velocity = Vector3::new(0.0, 0.0, 0.0);
+        let position_data = Arc::new(Mutex::new(Data::new()));
+        let (tx, _) = mpsc::channel();
+        let mut imu = Imu {
+            tx: vec![tx],
+            position_data: Arc::clone(&position_data),
+            prev_position: *position_data.lock().unwrap(),
+            prev_velocity: initial_velocity,
+            last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
+        };
+        position_data.lock().unwrap().timestamp -= Duration::new(1, 0);
+
+        assert!(imu.step().is_err());
+    }
+
+    #[test]
+    fn given_the_same_timestamp_expect_acceleration_from_last_valid_measurement() {
+        let position_data = Arc::new(Mutex::new(Data::new()));
+        let (tx, rx) = mpsc::channel();
+        let mut imu = Imu {
+            tx: vec![tx],
+            position_data: Arc::clone(&position_data),
+            prev_position: *position_data.lock().unwrap(),
+            prev_velocity: Vector3::new(0.0, 0.0, 0.0),
+            last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
+        };
+
+        {
+            let mut position_data = position_data.lock().unwrap();
+            position_data.x = 1.0;
+            position_data.y = 2.0;
+            position_data.z = 3.0;
+            position_data.timestamp += Duration::from_secs(1);
+        }
+        assert!(imu.step().is_ok());
+
+        let Telemetry::Acceleration(acc) = rx.recv().unwrap() else {
+            panic!("Cannot return position!");
+        };
+        approx::assert_abs_diff_eq!(acc.x, 1.0);
+        approx::assert_abs_diff_eq!(acc.y, 2.0);
+        approx::assert_abs_diff_eq!(acc.z, 3.0);
+
+        {
+            let mut position_data = position_data.lock().unwrap();
+            position_data.x = 1.5;
+            position_data.y = 1.5;
+            position_data.z = 2.0;
+        }
+
+        assert!(imu.step().is_ok());
+        let Telemetry::Acceleration(acc) = rx.recv().unwrap() else {
+            panic!("Cannot return position!");
+        };
+        approx::assert_abs_diff_eq!(acc.x, 1.0);
+        approx::assert_abs_diff_eq!(acc.y, 2.0);
+        approx::assert_abs_diff_eq!(acc.z, 3.0);
+    }
+
+    #[test]
+    #[timeout(1000)]
+    fn given_next_timestamp_is_behind_previous_expect_imu_to_turn_off() {
+        let position_data = Arc::new(Mutex::new(Data::new()));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let (tx, _) = mpsc::channel();
+        let imu = Imu::run(Arc::clone(&position_data), vec![tx], Arc::clone(&shutdown));
+
+        position_data.lock().unwrap().timestamp -= Duration::new(1, 0);
+
         imu.join().unwrap();
     }
 }
