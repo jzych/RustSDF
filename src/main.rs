@@ -5,7 +5,7 @@ use std::{
         mpsc, Arc, Mutex,
     },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use crate::{
@@ -117,19 +117,32 @@ fn create_data_consumer(
 
     log("Consumers", source);
 
+    let consumer_start_time : SystemTime = SystemTime::now();
     let handle = thread::spawn(move || {
         for data in input_rx {
             match data {
                 Telemetry::Acceleration(d) => {
+                    let elapsed = consumer_start_time.elapsed().unwrap(); 
                     println!(
-                        "Consuming from: {:?}: received: {}, {}, {}",
-                        source, d.x, d.y, d.z
+                        "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
+                        source,
+                        d.x,
+                        d.y,
+                        d.z,
+                        elapsed.as_secs(),
+                        elapsed.subsec_millis()
                     )
                 }
                 Telemetry::Position(d) => {
+                    let elapsed = consumer_start_time.elapsed().unwrap(); 
                     println!(
-                        "Consuming from: {:?}: received: {}, {}, {}",
-                        source, d.x, d.y, d.z
+                        "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
+                        source,
+                        d.x,
+                        d.y,
+                        d.z,
+                        elapsed.as_secs(),
+                        elapsed.subsec_millis()
                     )
                 }
             }

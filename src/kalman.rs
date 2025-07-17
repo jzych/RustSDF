@@ -3,14 +3,14 @@
 use nalgebra::{Const, Matrix3, Matrix3x6, Matrix6, Matrix6x3, Matrix6x1, Matrix3x1};
 use std::thread::JoinHandle;
 use crate::data::{Data, Telemetry};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use std::sync::mpsc::{Receiver, Sender};
 
 
 
 
-const DT_IMU : f64 = 0.1; // seconds
-// const KALMAN_INTERVAL : u64 = DT_IMU as u64 * 1000; // miliseconds
+const DT_IMU : f64 = 0.5; // seconds
+const TIMING_TOLERANCE : f64 = 0.01; // 1% of timing tolerance
 const SIGMA_ACC : f64 = 0.01;
 const SIGMA_GPS : f64 = 0.1;
 
@@ -71,22 +71,33 @@ impl KalmanFilter {
         tx: Vec<Sender<Telemetry>>,
         rx: Receiver<Telemetry>,
     ) -> JoinHandle<()> {
+        let mut state: KalmanData = KalmanData::new();
+        let mut kalman = KalmanFilter::new(tx);
+        let mut drop_sample: bool = false;
+
         std::thread::spawn( move || {
-            let mut state: KalmanData = KalmanData::new();
-            let mut kalman = KalmanFilter::new(tx);
-            let mut kalman_position_estimate : Telemetry;
+            let mut last_imu_data_timestamp = SystemTime::now().checked_sub(Duration::from_secs_f64(DT_IMU)).unwrap();
             for telemetry in rx {
-                // println!(
-                //     "Kalman received data: {}, {}, {}",
-                //     telemetry.data().x, telemetry.data().y, telemetry.data().z
-                // );
-                match telemetry {
-                    
+                match telemetry {                    
                     Telemetry::Acceleration(data) => {
-                        // prediction
-                        let u = Matrix3x1::new(data.x, data.y, data.z);
-                        state.x = kalman.A * kalman.previous_kalman_state.x + kalman.B * u;
-                        state.P = kalman.A * kalman.previous_kalman_state.P * kalman.A.transpose() + kalman.Q;
+                        let current_imu_data_timestamp = SystemTime::now();
+                        let imu_elapsed: Duration = current_imu_data_timestamp.duration_since(last_imu_data_timestamp).unwrap(); 
+
+                        if imu_elapsed >= Duration::from_secs_f64(DT_IMU * (1.0 - TIMING_TOLERANCE)) {
+                            // prediction
+                            let u = Matrix3x1::new(data.x, data.y, data.z);
+                            state.x = kalman.A * kalman.previous_kalman_state.x + kalman.B * u;
+                            state.P = kalman.A * kalman.previous_kalman_state.P * kalman.A.transpose() + kalman.Q;
+                        } else if imu_elapsed > Duration::from_secs_f64(0.0) {
+                            drop_sample = true;
+                        }
+                        if imu_elapsed > Duration::from_secs_f64(DT_IMU * (1.0 + TIMING_TOLERANCE)) {
+                            eprintln!("Kalman: IMU data is late! Previous data obtained {}s {}ms ago. ",
+                                imu_elapsed.as_secs(),
+                                imu_elapsed.subsec_millis()
+                            );
+                        }
+                        last_imu_data_timestamp = SystemTime::now();
                     }
                     Telemetry::Position(data) => {
                         // correction
@@ -96,19 +107,22 @@ impl KalmanFilter {
                         state.P = (Matrix6::identity_generic(Const::<6>,Const::<6>) - K * kalman.H) * state.P;
                     },
                 }
-
-                // println!("Current state estimate: {}", state.x);
-                // println!("Current prob matrix: {}", state.P);
+                
                 kalman.previous_kalman_state = state;
-                kalman_position_estimate = Telemetry::Position(Data { x: state.x[0], y: state.x[1], z: state.x[2], timestamp: SystemTime::now() });
-                // println!(
-                //     "Kalman is sending: {}, {}, {}",
-                //     kalman_position_estimate.data().x, kalman_position_estimate.data().y, kalman_position_estimate.data().z
-                // );
-                kalman.tx.retain(|tx| tx.send(kalman_position_estimate).is_ok());
-                if kalman.tx.is_empty() {
-                    break;
+                let kalman_position_estimate = Telemetry::Position(Data {
+                    x: state.x[0],
+                    y: state.x[1],
+                    z: state.x[2],
+                    timestamp: SystemTime::now()
+                });
+
+                if !drop_sample {
+                    kalman.tx.retain(|tx| tx.send(kalman_position_estimate).is_ok());
+                    if kalman.tx.is_empty() {
+                        break;
+                    }
                 }
+                drop_sample = false;
             }
             println!("Kalman filter removed");
         })        
