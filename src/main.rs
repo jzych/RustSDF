@@ -149,9 +149,9 @@ fn main() -> Result<(), Error> {
 
     let avg_handle = start_avg_filter(&mut communication_registry)?;
     let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
-        .with_perlin_mode()
+        .with_angled_helical_mode()
         .with_period(1.0 / GENERATOR_FREQ)
-        .with_seed(2137)
+        .with_seed(7312)
         .spawn(Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
         Arc::clone(&generated_data_handle),
