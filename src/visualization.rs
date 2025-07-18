@@ -1,26 +1,19 @@
-use crate::{
-    data::{Data, Telemetry}, gps, imu
-};
-use plotters::{data, prelude::*, style::full_palette::GREEN_300};
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{Sender, Receiver},
-    },
-    thread::JoinHandle,
-};
-use std::{
-    thread,
-    time::{SystemTime, UNIX_EPOCH},
-};
 use plotters::coord::Shift;
+use plotters::prelude::*;
+use std::{sync::mpsc::Receiver, thread::JoinHandle};
+use std::{thread, time::UNIX_EPOCH};
 
+use crate::data::{Data, Telemetry};
 
 #[allow(unused)]
 pub struct Visualization;
 
 impl Visualization {
-    pub fn run(rx_avg: Receiver<Telemetry>, rx_kalman: Receiver<Telemetry>, rx_gps: Receiver<Telemetry>) -> JoinHandle<()> {
+    pub fn run(
+        rx_avg: Receiver<Telemetry>,
+        rx_kalman: Receiver<Telemetry>,
+        rx_gps: Receiver<Telemetry>,
+    ) -> JoinHandle<()> {
         let mut avg_data = Vec::new();
         let mut kalman_data = Vec::new();
         let mut gps_data = Vec::new();
@@ -58,7 +51,12 @@ impl Visualization {
                     }
                 }
             }
-            println!("Len avg = {} kalman = {} gps = {}", avg_data.len(), kalman_data.len(), gps_data.len());
+            // println!(
+            //     "Len avg = {} kalman = {} gps = {}",
+            //     avg_data.len(),
+            //     kalman_data.len(),
+            //     gps_data.len()
+            // );
             draw(avg_data, kalman_data, gps_data);
             println!("Visualization removed");
         });
@@ -76,8 +74,13 @@ fn select_xyz(coord_to_plot: &str, p: Data) -> f64 {
     }
 }
 
-fn create_plot(root: DrawingArea<BitMapBackend<'_>, Shift>, coord_to_plot: &str, avg_data: &Vec<Data>, kalman_data: &Vec<Data>, gps_data: &Vec<Data>) {
-
+fn create_plot(
+    root: DrawingArea<BitMapBackend<'_>, Shift>,
+    coord_to_plot: &str,
+    avg_data: &Vec<Data>,
+    kalman_data: &Vec<Data>,
+    gps_data: &Vec<Data>,
+) {
     let plot_start = gps_data[0]
         .timestamp
         .duration_since(UNIX_EPOCH)
@@ -157,14 +160,11 @@ fn create_plot(root: DrawingArea<BitMapBackend<'_>, Shift>, coord_to_plot: &str,
 }
 
 fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>) {
-    let sensor_name = "TODO";
-    let complete_plot_name = format!("output/{sensor_name}.png"); //TODO:add error handling if dir is not available?
-
-    let root = BitMapBackend::new(&complete_plot_name, (2000, 1000)).into_drawing_area();
+    let root = BitMapBackend::new("output/plot_gps_avg_kalman.png", (2000, 1000)).into_drawing_area();
     root.fill(&WHITE).unwrap();
 
     let (upper, lower) = root.split_vertically(40);
-    upper.titled("TODO", ("comic-sans", 30)).unwrap();
+    upper.titled("RustSDF", ("comic-sans", 30)).unwrap();
 
     let split_in_3 = lower.split_evenly((3, 1));
     let (_, lower_0) = split_in_3[0].split_vertically(40);
