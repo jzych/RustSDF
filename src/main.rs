@@ -15,7 +15,7 @@ use crate::{
     imu::Imu,
     kalman::KalmanFilter,
     logger::{get_data, log},
-    trajectory_generator::TrajectoryGenerator,
+    trajectory_generator::TrajectoryGeneratorBuilder,
 };
 
 use chrono::{DateTime, Local};
@@ -148,8 +148,11 @@ fn main() -> Result<(), Error> {
     let kalman_handle = start_kalman(&mut communication_registry)?;
 
     let avg_handle = start_avg_filter(&mut communication_registry)?;
-    let (generated_data_handle, generator_handle) =
-        TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+    let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
+        .with_perlin_mode()
+        .with_period(1.0 / GENERATOR_FREQ)
+        .with_seed(2137)
+        .spawn(Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
         Arc::clone(&generated_data_handle),
         &mut communication_registry,
@@ -200,8 +203,10 @@ mod tests {
     fn imu_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _) =
-            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
+            .with_random_mode()
+            .with_period(1.0 / GENERATOR_FREQ)
+            .spawn(Arc::clone(&shutdown_trigger));
         let result = start_imu(
             Arc::clone(&generated_data_handle),
             &mut communication_registry,
@@ -214,8 +219,10 @@ mod tests {
     fn gps_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _) =
-            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
+            .with_perlin_mode()
+            .with_period(1.0 / GENERATOR_FREQ)
+            .spawn(Arc::clone(&shutdown_trigger));
         let result = start_gps(
             Arc::clone(&generated_data_handle),
             &mut communication_registry,
@@ -243,8 +250,10 @@ mod tests {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _) =
-            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
+            .with_perlin_mode()
+            .with_period(1.0 / GENERATOR_FREQ)
+            .spawn(Arc::clone(&shutdown_trigger));
 
         communication_registry.register_for_input(DataSource::Imu, tx);
         let result = start_imu(
@@ -262,8 +271,10 @@ mod tests {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _) =
-            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
+            .with_perlin_mode()
+            .with_period(1.0 / GENERATOR_FREQ)
+            .spawn(Arc::clone(&shutdown_trigger));
 
         communication_registry.register_for_input(DataSource::Gps, tx);
         let result = start_gps(
@@ -301,8 +312,10 @@ mod tests {
     #[test]
     fn test_producer_sends_data() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _) =
-            TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
+            .with_perlin_mode()
+            .with_period(1.0 / GENERATOR_FREQ)
+            .spawn(Arc::clone(&shutdown_trigger));
 
         let mut communication_registry = CommunicationRegistry::new();
         let (tx, rx) = mpsc::channel();
