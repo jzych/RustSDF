@@ -1,6 +1,7 @@
 use crate::data::{Data, Telemetry};
 use nalgebra::Vector3;
 use std::{
+    num::NonZeroU32,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::Sender,
@@ -10,8 +11,10 @@ use std::{
     time::{Duration, SystemTimeError},
 };
 
+use crate::utils::get_cycle_duration;
+
 //Refresh rate in Hz
-const REFRESH_FREQ: u32 = 2;
+const REFRESH_FREQ: NonZeroU32 = NonZeroU32::new(2).unwrap();
 
 pub struct Imu {
     tx: Vec<Sender<Telemetry>>,
@@ -121,11 +124,6 @@ fn calculate_acceleration(
     (current_velocity - prev_velocity) / delta_time.as_secs_f64()
 }
 
-fn get_cycle_duration(frequency: u32) -> Duration {
-    assert!(frequency != 0);
-    Duration::from_secs_f64(1.0 / frequency as f64)
-}
-
 #[cfg(test)]
 mod test {
     use ntest_timeout::timeout;
@@ -180,20 +178,6 @@ mod test {
         for (result, expected) in result.iter().zip(expected_velocity.iter()) {
             approx::assert_abs_diff_eq!(result, expected);
         }
-    }
-
-    #[test]
-    fn given_frequency_expect_cycle_duration() {
-        let frequency = 10;
-        let expected_cycle_duration = Duration::from_millis(100);
-        assert_eq!(get_cycle_duration(frequency), expected_cycle_duration);
-    }
-
-    #[test]
-    #[should_panic]
-    fn given_zero_frequency_expect_panic() {
-        let frequency = 0;
-        get_cycle_duration(frequency);
     }
 
     #[test]
