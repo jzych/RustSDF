@@ -20,6 +20,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Install dependency for plotters
+      run: sudo apt-get install libfontconfig libfontconfig1-dev
+
     - name: Build
       run: cargo build --verbose
       
