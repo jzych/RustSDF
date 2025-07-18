@@ -4,7 +4,9 @@ use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::utils::get_cycle_duration;
 
 #[derive(Clone, Copy)]
 pub enum GenerationMode {
@@ -80,7 +82,7 @@ fn upscale(perlin_value: f64) -> f64 {
 
 pub struct TrajectoryGeneratorBuilder {
     mode: GenerationMode,
-    period: f64,
+    frequency: u32,
     seed: Option<u32>,
 }
 
@@ -89,7 +91,7 @@ impl TrajectoryGeneratorBuilder {
     pub fn new() -> Self {
         TrajectoryGeneratorBuilder {
             mode: GenerationMode::Random,
-            period: 1.0,
+            frequency: 1,
             seed: None,
         }
     }
@@ -104,8 +106,8 @@ impl TrajectoryGeneratorBuilder {
         self
     }
 
-    pub fn with_period(mut self, period: f64) -> Self {
-        self.period = period;
+    pub fn with_frequency(mut self, frequency: u32) -> Self {
+        self.frequency = frequency;
         self
     }
     pub fn with_seed(mut self, seed: u32) -> Self {
@@ -124,14 +126,14 @@ impl TrajectoryGeneratorBuilder {
 
         *generator.data_handle.lock().unwrap() = generator.generate_data();
 
-        let period = self.period;
+        let frequency = self.frequency;
         let generator_handle = std::thread::spawn(move || {
             while !generator.shutdown_trigger.load(Ordering::SeqCst) {
                 {
                     *generator.data_handle.lock().unwrap() = generator.generate_data();
                 }
 
-                std::thread::sleep(Duration::from_secs_f64(period));
+                std::thread::sleep(get_cycle_duration(frequency));
             }
             println!("Trajectory generator removed");
         });
@@ -151,7 +153,7 @@ mod tests {
     fn test_trajectory_generator_updates_data() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
-            .with_period(0.1)
+            .with_frequency(10)
             .with_random_mode()
             .spawn(Arc::clone(&shutdown));
 
@@ -170,7 +172,7 @@ mod tests {
     fn test_shutdown_trigger_stops_generation() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
-            .with_period(0.133)
+            .with_frequency(5)
             .with_perlin_mode()
             .with_seed(1000)
             .spawn(Arc::clone(&shutdown));

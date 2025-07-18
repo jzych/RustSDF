@@ -28,9 +28,10 @@ mod imu;
 mod kalman;
 mod logger;
 mod trajectory_generator;
+pub mod utils;
 
 //Refresh rate in Hz
-const GENERATOR_FREQ: f64 = 10.0;
+const GENERATOR_FREQ: u32 = 10;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -150,7 +151,7 @@ fn main() -> Result<(), Error> {
     let avg_handle = start_avg_filter(&mut communication_registry)?;
     let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
         .with_perlin_mode()
-        .with_period(1.0 / GENERATOR_FREQ)
+        .with_frequency(GENERATOR_FREQ)
         .with_seed(2137)
         .spawn(Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
@@ -205,7 +206,7 @@ mod tests {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_random_mode()
-            .with_period(1.0 / GENERATOR_FREQ)
+            .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
         let result = start_imu(
             Arc::clone(&generated_data_handle),
@@ -221,7 +222,7 @@ mod tests {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
-            .with_period(1.0 / GENERATOR_FREQ)
+            .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
         let result = start_gps(
             Arc::clone(&generated_data_handle),
@@ -252,7 +253,7 @@ mod tests {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
-            .with_period(1.0 / GENERATOR_FREQ)
+            .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
 
         communication_registry.register_for_input(DataSource::Imu, tx);
@@ -273,7 +274,7 @@ mod tests {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
-            .with_period(1.0 / GENERATOR_FREQ)
+            .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
 
         communication_registry.register_for_input(DataSource::Gps, tx);
@@ -314,7 +315,7 @@ mod tests {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
         let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
-            .with_period(1.0 / GENERATOR_FREQ)
+            .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
 
         let mut communication_registry = CommunicationRegistry::new();
