@@ -30,7 +30,7 @@ mod logger;
 mod trajectory_generator;
 
 //Refresh rate in Hz
-const GENERATOR_FREQ: f64 = 10.0;
+const GENERATOR_FREQ: f64 = 500.0;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -140,6 +140,8 @@ fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
 fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
+    let (generated_data_handle, generator_handle) =
+        TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
 
     let placeholder_consumer_handle =
         create_data_consumer(DataSource::Kalman, &mut communication_registry);
@@ -148,8 +150,6 @@ fn main() -> Result<(), Error> {
     let kalman_handle = start_kalman(&mut communication_registry)?;
 
     let avg_handle = start_avg_filter(&mut communication_registry)?;
-    let (generated_data_handle, generator_handle) =
-        TrajectoryGenerator::run(1.0 / GENERATOR_FREQ, Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
         Arc::clone(&generated_data_handle),
         &mut communication_registry,
@@ -161,7 +161,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    thread::sleep(Duration::from_secs(6));
+    thread::sleep(Duration::from_secs(2));
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();

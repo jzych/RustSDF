@@ -1,4 +1,7 @@
-use crate::data::{Data, Telemetry};
+use crate::{
+    data::{Data, Telemetry},
+    logger::log,
+};
 use nalgebra::Vector3;
 use std::{
     sync::{
@@ -11,7 +14,8 @@ use std::{
 };
 
 //Refresh rate in Hz
-const REFRESH_FREQ: u32 = 2;
+const REFRESH_FREQ: u32 = 250;
+const LOGGER_PREFIX: &str = "IMU";
 
 pub struct Imu {
     tx: Vec<Sender<Telemetry>>,
@@ -32,15 +36,23 @@ impl Imu {
             tx,
             *position_data.lock().unwrap(),
         );
-        std::thread::spawn(move || {
-            while should_run(&shutdown, &imu.tx) {
-                if let Err(e) = imu.step() {
-                    eprintln!("Imu internal error: {e}. Aborting.");
-                    break;
-                };
-                std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+        std::thread::spawn(move || match imu.init_velocity() {
+            Ok(_) => {
+                while should_run(&shutdown, &imu.tx) {
+                    if let Err(e) = imu.step() {
+                        log(LOGGER_PREFIX, format!("Imu internal error: {e}. Aborting."));
+                        return;
+                    };
+                    std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+                }
+                log(LOGGER_PREFIX, "Imu removed");
             }
-            println!("Imu removed");
+            Err(e) => {
+                log(
+                    LOGGER_PREFIX,
+                    format!("Imu internal error during initialization: {e}. Aborting."),
+                );
+            }
         })
     }
 
@@ -58,6 +70,25 @@ impl Imu {
         }
     }
 
+    ///
+    /// Two first cycles are used for velocity initialization
+    ///
+    fn init_velocity(&mut self) -> Result<(), SystemTimeError> {
+        for _ in 0..2 {
+            let current_position = { *self.position_data.lock().unwrap() };
+
+            let delta_time = current_position
+                .timestamp
+                .duration_since(self.prev_position.timestamp)?;
+
+            if !delta_time.is_zero() {
+                self.prev_velocity = calculate_velocity_from(&self.prev_position, &current_position, &delta_time);
+            };
+            std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+        }
+        Ok(())
+    }
+
     fn step(&mut self) -> Result<(), SystemTimeError> {
         let current_position = *self.position_data.lock().unwrap();
 
@@ -68,10 +99,10 @@ impl Imu {
         let current_velocity = if delta_time.is_zero() {
             self.prev_velocity
         } else {
-            calculate_velocity(&self.prev_position, &current_position, &delta_time)
+            calculate_velocity_from(&self.prev_position, &current_position, &delta_time)
         };
 
-        let acceleration = if delta_time.is_zero() {
+        self.last_valid_acceleration = if delta_time.is_zero() {
             self.last_valid_acceleration
         } else {
             calculate_acceleration(&self.prev_velocity, &current_velocity, &delta_time)
@@ -79,12 +110,11 @@ impl Imu {
 
         self.prev_velocity = current_velocity;
         self.prev_position = current_position;
-        self.last_valid_acceleration = acceleration;
 
         let data_to_send = Data {
-            x: acceleration.x,
-            y: acceleration.y,
-            z: acceleration.z,
+            x: self.last_valid_acceleration.x,
+            y: self.last_valid_acceleration.y,
+            z: self.last_valid_acceleration.z,
             timestamp: current_position.timestamp,
         };
 
@@ -102,7 +132,7 @@ fn should_run(shutdown_flag: &Arc<AtomicBool>, transmitters: &[Sender<Telemetry>
     !shutdown_flag.load(Ordering::SeqCst) && !transmitters.is_empty()
 }
 
-fn calculate_velocity(
+fn calculate_velocity_from(
     prev_position: &Data,
     current_position: &Data,
     delta_time: &Duration,
@@ -176,10 +206,43 @@ mod test {
         let delta_time = Duration::from_secs_f64(2.0);
         let expected_velocity = Vector3::new(0.5, -1.0, 0.0);
 
-        let result = calculate_velocity(&initial_position, &final_position, &delta_time);
+        let result = calculate_velocity_from(&initial_position, &final_position, &delta_time);
         for (result, expected) in result.iter().zip(expected_velocity.iter()) {
             approx::assert_abs_diff_eq!(result, expected);
         }
+    }
+
+    #[test]
+    fn given_velocity_initialization_expect_acceleration_to_be_unchanged() {
+        let position_data = Arc::new(Mutex::new(Data::new()));
+        let (tx, rx) = mpsc::channel();
+        let mut imu = Imu {
+            tx: vec![tx],
+            position_data: Arc::clone(&position_data),
+            prev_position: *position_data.lock().unwrap(),
+            prev_velocity: Vector3::new(0.0, 0.0, 0.0),
+            last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
+        };
+        
+        {
+            let mut position_data = position_data.lock().unwrap();
+            position_data.x = 1.0;
+            position_data.y = 2.0;
+            position_data.z = 3.0;
+            position_data.timestamp += Duration::from_secs(1);
+        }
+
+        assert!(imu.init_velocity().is_ok());
+
+        approx::assert_abs_diff_eq!(imu.prev_velocity.x, 1.0);
+        approx::assert_abs_diff_eq!(imu.prev_velocity.y, 2.0);
+        approx::assert_abs_diff_eq!(imu.prev_velocity.z, 3.0);
+        approx::assert_abs_diff_eq!(imu.last_valid_acceleration.x, 0.0);
+        approx::assert_abs_diff_eq!(imu.last_valid_acceleration.y, 0.0);
+        approx::assert_abs_diff_eq!(imu.last_valid_acceleration.z, 0.0);
+        let received_elements = rx.try_iter().collect::<Vec<_>>();
+        assert!(received_elements.is_empty());
+        
     }
 
     #[test]
