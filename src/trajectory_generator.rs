@@ -113,8 +113,14 @@ impl TrajectoryGeneratorBuilder {
         self.frequency = frequency;
         self
     }
+
     pub fn with_seed(mut self, seed: u32) -> Self {
         self.seed = Some(seed);
+        self
+    }
+
+    pub fn with_yellow_seed(mut self) -> Self {
+        self.seed = Some(0x859);
         self
     }
 
@@ -175,9 +181,9 @@ mod tests {
     fn test_shutdown_trigger_stops_generation() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
+            .with_yellow_seed()
             .with_frequency(NonZeroU32::new(5).unwrap())
             .with_perlin_mode()
-            .with_seed(1000)
             .spawn(Arc::clone(&shutdown));
 
         std::thread::sleep(Duration::from_millis(100));
