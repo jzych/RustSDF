@@ -1,4 +1,5 @@
 use crate::{
+    utils::get_cycle_duration,
     data::{Data, Telemetry},
     logger::log,
 };
@@ -13,8 +14,6 @@ use std::{
     thread::JoinHandle,
     time::{Duration, SystemTimeError},
 };
-
-use crate::utils::get_cycle_duration;
 
 //Refresh rate in Hz
 const REFRESH_FREQ: NonZeroU32 = NonZeroU32::new(2).unwrap();
@@ -34,61 +33,49 @@ impl Imu {
         tx: Vec<Sender<Telemetry>>,
         shutdown: Arc<AtomicBool>,
     ) -> JoinHandle<()> {
-        let mut imu = Imu::new(
-            Arc::clone(&position_data),
-            tx,
-            *position_data.lock().unwrap(),
-        );
+        let mut imu = Imu::new(position_data, tx);
         std::thread::spawn(move || match imu.init_velocity() {
             Ok(_) => {
+                // wait one cycle before entering the main loop to give the trajectory generator
+                // a chance to update position after calculating initial velocity
+                std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
                 while should_run(&shutdown, &imu.tx) {
                     if let Err(e) = imu.step() {
-                        log(LOGGER_PREFIX, format!("Imu internal error: {e}. Aborting."));
+                        eprintln!("Imu internal error: {e}. Aborting.");
                         return;
                     };
                     std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
                 }
-                log(LOGGER_PREFIX, "Imu removed");
+                println!("Imu removed");
             }
             Err(e) => {
-                log(
-                    LOGGER_PREFIX,
-                    format!("Imu internal error during initialization: {e}. Aborting."),
-                );
+                eprintln!("Imu internal error during initialization: {e}. Aborting.");
             }
         })
     }
 
-    fn new(
-        position_data: Arc<Mutex<Data>>,
-        tx: Vec<Sender<Telemetry>>,
-        initial_position: Data,
-    ) -> Imu {
+    fn new(position_data: Arc<Mutex<Data>>, tx: Vec<Sender<Telemetry>>) -> Imu {
         Imu {
             tx,
-            position_data,
-            prev_position: initial_position,
+            position_data: Arc::clone(&position_data),
+            prev_position: *position_data.lock().unwrap(),
             prev_velocity: Vector3::new(0.0, 0.0, 0.0),
             last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
         }
     }
 
-    ///
-    /// Two first cycles are used for velocity initialization
-    ///
     fn init_velocity(&mut self) -> Result<(), SystemTimeError> {
-        for _ in 0..2 {
-            let current_position = { *self.position_data.lock().unwrap() };
+        // sleep one cycle to give trajectory generator a chance to update position
+        std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+        let current_position = *self.position_data.lock().unwrap();
 
-            let delta_time = current_position
-                .timestamp
-                .duration_since(self.prev_position.timestamp)?;
+        let delta_time = current_position
+            .timestamp
+            .duration_since(self.prev_position.timestamp)?;
 
-            if !delta_time.is_zero() {
-                self.prev_velocity =
-                    calculate_velocity(&self.prev_position, &current_position, &delta_time);
-            };
-            std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+        if !delta_time.is_zero() {
+            self.prev_velocity =
+                calculate_velocity(&self.prev_position, &current_position, &delta_time);
         }
         Ok(())
     }
@@ -100,15 +87,13 @@ impl Imu {
             .timestamp
             .duration_since(self.prev_position.timestamp)?;
 
-        (self.prev_velocity, self.last_valid_acceleration) = if !delta_time.is_zero() {
+        if !delta_time.is_zero() {
             let current_velocity =
                 calculate_velocity(&self.prev_position, &current_position, &delta_time);
-            let acceleration =
+            self.last_valid_acceleration =
                 calculate_acceleration(&self.prev_velocity, &current_velocity, &delta_time);
-            (current_velocity, acceleration)
-        } else {
-            (self.prev_velocity, self.last_valid_acceleration)
-        };
+            self.prev_velocity = current_velocity;
+        }
 
         self.prev_position = current_position;
 
@@ -119,6 +104,7 @@ impl Imu {
             timestamp: current_position.timestamp,
         };
 
+        log(LOGGER_PREFIX, data_to_send);
         self.send_data(data_to_send);
         Ok(())
     }
