@@ -153,7 +153,7 @@ fn main() -> Result<(), Error> {
     let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
         .with_perlin_mode()
         .with_frequency(GENERATOR_FREQ)
-        .with_seed(7312)
+        .with_yellow_seed()
         .spawn(Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
         Arc::clone(&generated_data_handle),
