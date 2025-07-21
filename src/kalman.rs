@@ -1,16 +1,23 @@
 #![allow(non_snake_case)]
 
-use nalgebra::{Const, Matrix3, Matrix3x6, Matrix6, Matrix6x3, Matrix6x1, Matrix3x1};
-use std::thread::JoinHandle;
-use crate::data::{Data, Telemetry};
-use std::time::{Duration, SystemTime};
-use std::sync::mpsc::{Receiver, Sender};
+use std::{
+    sync::mpsc::{Receiver, Sender},
+    thread::JoinHandle,
+    time::{Duration, SystemTime},
+};
+use nalgebra::{Const, Matrix3, Matrix3x6, Matrix3x1, Matrix6, Matrix6x1, Matrix6x3};
+use crate::{
+    data::{Data, Telemetry},
+    logger::log,
+};
 
 
-const DT_IMU : f64 = 0.1; // seconds
+
+const DT_IMU : f64 = 0.05; // seconds
 const TIMING_TOLERANCE : f64 = 0.02; // 0.01 = 1% of timing tolerance
 const SIGMA_ACC : f64 = 0.1;
 const SIGMA_GPS : f64 = 0.1;
+const LOGGER_PREFIX: &str = "KALMAN";
 
 
 #[derive(Debug, Copy, Clone)]
@@ -124,8 +131,10 @@ impl KalmanFilter {
                     if kalman.tx.is_empty() {
                         break;
                     }
+                    log(LOGGER_PREFIX, kalman_position_estimate);
                 }
             }
+            log(LOGGER_PREFIX, "Kalman removed");
             println!("Kalman filter removed");
         })
     }   
