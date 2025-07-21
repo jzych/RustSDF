@@ -24,7 +24,7 @@ impl Visualization {
                     Telemetry::Position(d) => {
                         gps_data.push(d);
                     }
-                    Telemetry::Acceleration(d) => {
+                    Telemetry::Acceleration(_d) => {
                         //avg_data.push(data);
                     }
                 }
@@ -35,7 +35,7 @@ impl Visualization {
                     Telemetry::Position(d) => {
                         avg_data.push(d);
                     }
-                    Telemetry::Acceleration(d) => {
+                    Telemetry::Acceleration(_d) => {
                         //avg_data.push(data);
                     }
                 }
@@ -46,7 +46,7 @@ impl Visualization {
                     Telemetry::Position(d) => {
                         kalman_data.push(d);
                     }
-                    Telemetry::Acceleration(d) => {
+                    Telemetry::Acceleration(_d) => {
                         //avg_data.push(data);
                     }
                 }
@@ -77,9 +77,9 @@ fn select_xyz(coord_to_plot: &str, p: Data) -> f64 {
 fn create_plot(
     root: DrawingArea<BitMapBackend<'_>, Shift>,
     coord_to_plot: &str,
-    avg_data: &Vec<Data>,
-    kalman_data: &Vec<Data>,
-    gps_data: &Vec<Data>,
+    avg_data: &[Data],
+    kalman_data: &[Data],
+    gps_data: &[Data],
 ) {
     let plot_start = gps_data[0]
         .timestamp
@@ -178,11 +178,22 @@ fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::visualization::draw;
+    use super::*;
+
+    use std::time::SystemTime;
 
     #[test]
-    fn dummy() {
-        //draw();
-        assert!(true);
+    fn test_select_xyz() {
+        let data = Data {
+            x: 234.5,
+            y: 555.1,
+            z: 33.3,
+            timestamp: SystemTime::now(),
+        };
+
+        assert!(select_xyz("x", data) == 234.5);
+        assert!(select_xyz("y", data) == 555.1);
+        assert!(select_xyz("z", data) == 33.3);
+
     }
 }
