@@ -157,30 +157,25 @@ fn telemetry_check(
             *last_imu_data_timestamp = current_imu_data_timestamp;
             *imu_samples_received += 1;
 
-            if *imu_samples_received <= imu_samples_to_skip {
+            if (*imu_samples_received <= imu_samples_to_skip) || (*gps_samples_received < 2) {
                 false
-            }
-            else if *gps_samples_received < 2 {
+            } else if imu_elapsed > Duration::from_secs_f64(DT_IMU * (1.0 + TIMING_TOLERANCE)) {
+                eprintln!("Kalman: IMU data is late! Previous data obtained {}s {:03}ms ago. ",
+                    imu_elapsed.as_secs(),
+                    imu_elapsed.subsec_millis()
+                );
+                true
+            } else if imu_elapsed >= Duration::from_secs_f64(DT_IMU * (1.0 - TIMING_TOLERANCE)) {
+                true
+            } else if imu_elapsed > Duration::from_secs_f64(0.0) {
+                eprintln!("Kalman: IMU data received too soon! Previous data obtained {}s {:03}ms ago. ",
+                    imu_elapsed.as_secs(),
+                    imu_elapsed.subsec_millis()
+                );
                 false
             } else {
-                if imu_elapsed > Duration::from_secs_f64(DT_IMU * (1.0 + TIMING_TOLERANCE)) {
-                    eprintln!("Kalman: IMU data is late! Previous data obtained {}s {:03}ms ago. ",
-                        imu_elapsed.as_secs(),
-                        imu_elapsed.subsec_millis()
-                    );
-                    true
-                } else if imu_elapsed >= Duration::from_secs_f64(DT_IMU * (1.0 - TIMING_TOLERANCE)) {
-                    true
-                } else if imu_elapsed > Duration::from_secs_f64(0.0) {
-                    eprintln!("Kalman: IMU data received too soon! Previous data obtained {}s {:03}ms ago. ",
-                        imu_elapsed.as_secs(),
-                        imu_elapsed.subsec_millis()
-                    );
-                    false
-                } else {
-                    eprintln!("Kalman: Time inversion");
-                    false
-                }
+                eprintln!("Kalman: Time inversion");
+                false
             }
         }
         Telemetry::Position(data) => {
@@ -191,27 +186,25 @@ fn telemetry_check(
                 false
             } else if *gps_samples_received == 2 {
                 let delta_time = data.timestamp.duration_since(prev_gps_data.timestamp).unwrap().as_secs_f64();
-                (*state).x[0] = data.x;
-                (*state).x[1] = data.y;
-                (*state).x[2] = data.z;
-                (*state).x[3] = (data.x - prev_gps_data.x)/delta_time;
-                (*state).x[4] = (data.y - prev_gps_data.y)/delta_time;
-                (*state).x[5] = (data.z - prev_gps_data.z)/delta_time;
+                state.x[0] = data.x;
+                state.x[1] = data.y;
+                state.x[2] = data.z;
+                state.x[3] = (data.x - prev_gps_data.x)/delta_time;
+                state.x[4] = (data.y - prev_gps_data.y)/delta_time;
+                state.x[5] = (data.z - prev_gps_data.z)/delta_time;
                 println!("Kalman: Initial position from GPS data: {}, {}, {}",
-                    (*state).x[0],
-                    (*state).x[1],
-                    (*state).x[2]
+                    state.x[0],
+                    state.x[1],
+                    state.x[2]
                 );
                 println!("Kalman: Initial velocity from GPS data: {}, {}, {}",
-                    (*state).x[3],
-                    (*state).x[4],
-                    (*state).x[5]
+                    state.x[3],
+                    state.x[4],
+                    state.x[5]
                 );
                 false
-            } else if *imu_samples_received <= imu_samples_to_skip {
-                false
             } else {
-                true
+                *imu_samples_received > imu_samples_to_skip
             }
         }
     }
