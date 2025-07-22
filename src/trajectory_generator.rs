@@ -12,7 +12,7 @@ use std::{
 
 use crate::utils::get_cycle_duration;
 
-const HELIX_FREQUENCY: f64 = 0.5;
+const HELIX_FREQUENCY: f64 = 0.4;
 
 #[derive(Clone, Copy)]
 pub enum GenerationMode {

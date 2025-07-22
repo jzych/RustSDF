@@ -99,20 +99,20 @@ impl KalmanFilter {
                     match telemetry {                    
                         Telemetry::Acceleration(data) => {
                             // prediction
-                            // println!(
-                            //     "Kalman received IMU data: {}, {}, {}",
-                            //     data.x, data.y, data.z
-                            // );
+                            println!(
+                                "Kalman received IMU data: {}, {}, {}",
+                                data.x, data.y, data.z
+                            );
                             let u = Matrix3x1::new(data.x, data.y, data.z);
                             kalman.state.x = kalman.A * kalman.state.x + kalman.B * u;
                             kalman.state.P = kalman.A * kalman.state.P * kalman.A.transpose() + kalman.Q;
                         }
                         Telemetry::Position(data) => {
                             // correction
-                            // println!(
-                            //     "Kalman received GPS data: {}, {}, {}",
-                            //     data.x, data.y, data.z
-                            // );
+                            println!(
+                                "Kalman received GPS data: {}, {}, {}",
+                                data.x, data.y, data.z
+                            );
                             let z = Matrix3x1::new(data.x, data.y, data.z);
                             let K = kalman.state.P * kalman.H.transpose() * (kalman.H * kalman.state.P * kalman.H.transpose() + kalman.R).try_inverse().unwrap();
                             kalman.state.x = kalman.state.x + K * (z - kalman.H * kalman.state.x);
@@ -182,6 +182,11 @@ fn telemetry_check(
             
             if *gps_samples_received < 2 {
                 *prev_gps_data = data;
+                println!("Kalman: First GPS sample: {}, {}, {}",
+                    data.x,
+                    data.y,
+                    data.z
+                );
                 false
             } else if *gps_samples_received == 2 {
                 let delta_time = data.timestamp.duration_since(prev_gps_data.timestamp).unwrap().as_secs_f64();
@@ -196,10 +201,11 @@ fn telemetry_check(
                     state.x[1],
                     state.x[2]
                 );
-                println!("Kalman: Initial velocity from GPS data: {}, {}, {}",
+                println!("Kalman: Initial velocity from GPS data: {}, {}, {}, dt = {}",
                     state.x[3],
                     state.x[4],
-                    state.x[5]
+                    state.x[5],
+                    delta_time,
                 );
                 false
             } else {

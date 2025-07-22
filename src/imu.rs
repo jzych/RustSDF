@@ -15,8 +15,6 @@ use std::{
     time::{Duration, SystemTimeError},
 };
 
-//Refresh rate in Hz
-const REFRESH_FREQ: NonZeroU32 = NonZeroU32::new(2).unwrap();
 const LOGGER_PREFIX: &str = "IMU";
 
 pub struct Imu {
@@ -40,7 +38,7 @@ impl Imu {
             Ok(_) => {
                 // wait one cycle before entering the main loop to give the trajectory generator
                 // a chance to update position after calculating initial velocity
-                std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+                std::thread::sleep(get_cycle_duration(imu.frequency));
                 while should_run(&shutdown, &imu.tx) {
                     if let Err(e) = imu.step() {
                         eprintln!("Imu internal error: {e}. Aborting.");
@@ -73,7 +71,7 @@ impl Imu {
 
     fn init_velocity(&mut self) -> Result<(), SystemTimeError> {
         // sleep one cycle to give trajectory generator a chance to update position
-        std::thread::sleep(get_cycle_duration(REFRESH_FREQ));
+        std::thread::sleep(get_cycle_duration(self.frequency));
         let current_position = *self.position_data.lock().unwrap();
 
         let delta_time = current_position
@@ -119,6 +117,11 @@ impl Imu {
     fn send_data(&mut self, data: Data) {
         self.tx
             .retain(|tx| tx.send(Telemetry::Acceleration(data)).is_ok());
+        println!("IMU: Data: {}, {}, {}",
+            data.x,
+            data.y,
+            data.z
+        );
     }
 }
 
