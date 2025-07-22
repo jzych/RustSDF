@@ -117,11 +117,6 @@ impl Imu {
     fn send_data(&mut self, data: Data) {
         self.tx
             .retain(|tx| tx.send(Telemetry::Acceleration(data)).is_ok());
-        println!("IMU: Data: {}, {}, {}",
-            data.x,
-            data.y,
-            data.z
-        );
     }
 }
 

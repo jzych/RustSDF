@@ -29,11 +29,6 @@ impl Gps {
                 if tx.is_empty() {
                     break;
                 }
-                println!("GPS: Data: {}, {}, {}",
-                    current_position.x,
-                    current_position.y,
-                    current_position.z
-                );
                 thread::sleep(get_cycle_duration(frequency));
             }
         })
