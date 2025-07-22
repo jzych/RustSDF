@@ -1,25 +1,25 @@
-use crate::data::{Data, Telemetry};
+use crate::{
+    data::{Data, Telemetry},
+    utils::get_cycle_duration,
+};
 use std::{
+    num::NonZeroU32,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::Sender,
         Arc, Mutex,
     },
     thread::{self, JoinHandle},
-    time::Duration,
 };
 
-const FREQUENCY: f64 = 5.0;
-
-#[allow(unused)]
 pub struct Gps;
 
-#[allow(unused)]
 impl Gps {
     pub fn run(
         trajectory_generator: Arc<Mutex<Data>>,
         mut tx: Vec<Sender<Telemetry>>,
         shutdown: Arc<AtomicBool>,
+        frequency: NonZeroU32,
     ) -> JoinHandle<()> {
         std::thread::spawn(move || {
             while !shutdown.load(Ordering::SeqCst) {
@@ -29,7 +29,7 @@ impl Gps {
                 if tx.is_empty() {
                     break;
                 }
-                thread::sleep(Duration::from_secs_f64(1.0 / FREQUENCY));
+                thread::sleep(get_cycle_duration(frequency));
             }
         })
     }
@@ -45,10 +45,12 @@ mod tests {
         let trajectory_generator = Arc::new(Mutex::new(Data::new()));
         let (tx, rx) = mpsc::channel();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
+        let arbitrary_frequency = NonZeroU32::new(5).unwrap();
         let gps = Gps::run(
-            Arc::clone(&trajectory_generator),
+            trajectory_generator,
             vec![tx],
-            Arc::clone(&shutdown_trigger),
+            shutdown_trigger,
+            arbitrary_frequency,
         );
         drop(rx);
         gps.join().unwrap();
@@ -59,14 +61,17 @@ mod tests {
         let trajectory_generator = Arc::new(Mutex::new(Data::new()));
         let (tx, rx) = mpsc::channel();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let imu = Gps::run(
-            Arc::clone(&trajectory_generator),
+        let arbitrary_frequency = NonZeroU32::new(5).unwrap();
+        let gps = Gps::run(
+            trajectory_generator,
             vec![tx],
             Arc::clone(&shutdown_trigger),
+            arbitrary_frequency,
         );
-        std::thread::sleep(Duration::from_secs(1));
+        let two_cycles = 2 * get_cycle_duration(arbitrary_frequency);
+        std::thread::sleep(two_cycles);
         shutdown_trigger.store(true, Ordering::SeqCst);
-        imu.join().unwrap();
+        gps.join().unwrap();
         let received: Vec<_> = rx.try_iter().collect();
         assert!(!received.is_empty());
     }

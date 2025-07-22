@@ -12,8 +12,7 @@ use crate::{
     average::Average,
     communication_registry::{CommunicationRegistry, DataSource},
     data::{Data, Telemetry},
-    gps::Gps,
-    imu::Imu,
+    sensor_builder::SensorBuilder,
     kalman::KalmanFilter,
     logger::{get_data, log},
     trajectory_generator::TrajectoryGeneratorBuilder,
@@ -29,10 +28,13 @@ mod imu;
 mod kalman;
 mod logger;
 mod trajectory_generator;
-pub mod utils;
+mod sensor_builder;
+mod utils;
 
 //Refresh rate in Hz
 const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(10).unwrap();
+const IMU_FREQ: NonZeroU32 = NonZeroU32::new(2).unwrap();
+const GPS_FREQ: NonZeroU32 = NonZeroU32::new(5).unwrap();
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -45,16 +47,17 @@ fn start_imu(
     communication_registry: &mut CommunicationRegistry,
     shutdown: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
-    match communication_registry.get_registered_transmitters(DataSource::Imu) {
-        Some(transmitters) => Ok(Imu::run(
-            trajectory_data,
-            transmitters,
-            Arc::clone(&shutdown),
-        )),
-        None => Err(Error::StartupError(
-            "No subscribers for Imu. Start aborted.",
-        )),
-    }
+    let Some(subscribers) = communication_registry.get_registered_transmitters(DataSource::Imu)
+    else {
+        return Err(Error::StartupError(
+            "No subscribers for IMU. Start aborted.",
+        ));
+    };
+    Ok(SensorBuilder::new_imu()
+        .with_frequency(IMU_FREQ)
+        .with_position_generator(trajectory_data)
+        .with_subscribers(subscribers)
+        .spawn(shutdown))
 }
 
 fn start_gps(
@@ -62,16 +65,17 @@ fn start_gps(
     communication_registry: &mut CommunicationRegistry,
     shutdown: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
-    match communication_registry.get_registered_transmitters(DataSource::Gps) {
-        Some(transmitters) => Ok(Gps::run(
-            trajectory_data,
-            transmitters,
-            Arc::clone(&shutdown),
-        )),
-        None => Err(Error::StartupError(
+    let Some(subscribers) = communication_registry.get_registered_transmitters(DataSource::Gps)
+    else {
+        return Err(Error::StartupError(
             "No subscribers for GPS. Start aborted.",
-        )),
-    }
+        ));
+    };
+    Ok(SensorBuilder::new_gps()
+        .with_frequency(GPS_FREQ)
+        .with_position_generator(trajectory_data)
+        .with_subscribers(subscribers)
+        .spawn(shutdown))
 }
 
 fn start_kalman(
