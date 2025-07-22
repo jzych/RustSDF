@@ -75,7 +75,7 @@ impl KalmanFilter {
         rx: Receiver<Telemetry>,
     ) -> JoinHandle<()> {
         let mut kalman = KalmanFilter::new(tx);
-        let imu_samples_to_skip : u32 = 2;
+        let imu_samples_to_skip : u32 = 0;
         let mut imu_samples_received : u32 = 0;
         let mut last_imu_data_timestamp = SystemTime::now();
         let mut gps_samples_received : u32 = 0;
@@ -134,7 +134,6 @@ impl KalmanFilter {
                     log(LOGGER_PREFIX, kalman_position_estimate);
                 }
             }
-            log(LOGGER_PREFIX, "Kalman removed");
             println!("Kalman filter removed");
         })
     }   
