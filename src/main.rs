@@ -16,6 +16,7 @@ use crate::{
     kalman::KalmanFilter,
     logger::{get_data, log},
     trajectory_generator::TrajectoryGeneratorBuilder,
+    visualization::Visualization,
 };
 
 use chrono::{DateTime, Local};
@@ -30,6 +31,7 @@ mod logger;
 mod trajectory_generator;
 mod sensor_builder;
 mod utils;
+mod visualization;
 
 //Refresh rate in Hz
 const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(10).unwrap();
@@ -108,6 +110,20 @@ fn start_avg_filter(
     }
 }
 
+fn start_visualization(
+    communication_registry: &mut CommunicationRegistry,
+) -> JoinHandle<()>  {
+    let (tx_avg, rx_avg) = mpsc::channel();
+    let (tx_kalman, rx_kalman) = mpsc::channel();
+    let (tx_gps, rx_gps) = mpsc::channel();
+    communication_registry.register_for_input(DataSource::Average, tx_avg);
+    communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
+    communication_registry.register_for_input(DataSource::Gps, tx_gps);
+
+    Visualization::run(rx_avg, rx_kalman, rx_gps)
+
+}
+
 fn create_data_consumer(
     source: DataSource,
     consumer_registry: &mut CommunicationRegistry,
@@ -164,8 +180,9 @@ fn main() -> Result<(), Error> {
         create_data_consumer(DataSource::Kalman, &mut communication_registry);
     let consumer3_handle = create_data_consumer(DataSource::Average, &mut communication_registry);
 
+    let visu_handle = start_visualization(&mut communication_registry);
     let kalman_handle = start_kalman(&mut communication_registry)?;
-
+    
     let avg_handle = start_avg_filter(&mut communication_registry)?;
     let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
         .with_frequency(GENERATOR_FREQ)
@@ -182,7 +199,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    thread::sleep(Duration::from_secs(6));
+    thread::sleep(Duration::from_secs(20));
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
@@ -192,6 +209,7 @@ fn main() -> Result<(), Error> {
     avg_handle.join().unwrap();
     placeholder_consumer_handle.join().unwrap();
     consumer3_handle.join().unwrap();
+    visu_handle.join().unwrap();
 
     let consumers = get_data::<DataSource>("Consumers");
 
