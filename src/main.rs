@@ -12,7 +12,7 @@ use crate::{
     average::Average,
     communication_registry::{CommunicationRegistry, DataSource},
     data::{Data, Telemetry},
-    signal_provider_builder::SignalProviderBuilder,
+    sensor_builder::SensorBuilder,
     kalman::KalmanFilter,
     logger::{get_data, log},
     trajectory_generator::TrajectoryGeneratorBuilder,
@@ -28,7 +28,7 @@ mod imu;
 mod kalman;
 mod logger;
 mod trajectory_generator;
-mod signal_provider_builder;
+mod sensor_builder;
 mod utils;
 
 //Refresh rate in Hz
@@ -53,7 +53,7 @@ fn start_imu(
             "No subscribers for IMU. Start aborted.",
         ));
     };
-    Ok(SignalProviderBuilder::new_imu()
+    Ok(SensorBuilder::new_imu()
         .with_frequency(IMU_FREQ)
         .with_position_generator(trajectory_data)
         .with_subscribers(subscribers)
@@ -71,7 +71,7 @@ fn start_gps(
             "No subscribers for GPS. Start aborted.",
         ));
     };
-    Ok(SignalProviderBuilder::new_gps()
+    Ok(SensorBuilder::new_gps()
         .with_frequency(GPS_FREQ)
         .with_position_generator(trajectory_data)
         .with_subscribers(subscribers)

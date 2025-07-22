@@ -16,14 +16,14 @@ enum ProviderType {
     Imu,
 }
 
-pub struct SignalProviderBuilder {
+pub struct SensorBuilder {
     provider_type: ProviderType,
     frequency: NonZeroU32,
     transmitters: Vec<Sender<Telemetry>>,
     position_generator: Arc<Mutex<Data>>,
 }
 
-impl SignalProviderBuilder {
+impl SensorBuilder {
     fn default() -> Self {
         Self {
             provider_type: ProviderType::Imu,
@@ -91,27 +91,27 @@ mod tests {
     #[test]
     fn expect_default_provides_valid_imu_config() {
         let expected_freq = NonZeroU32::new(1).unwrap();
-        let imu_config = SignalProviderBuilder::default();
+        let imu_config = SensorBuilder::default();
         assert_eq!(imu_config.frequency, expected_freq);
         assert!(imu_config.transmitters.is_empty());
     }
 
     #[test]
     fn given_new_imu_expect_builder_with_imu_as_signal_provider() {
-        let builder_cfg = SignalProviderBuilder::new_imu();
+        let builder_cfg = SensorBuilder::new_imu();
         assert_eq!(builder_cfg.provider_type, ProviderType::Imu);
     }
 
     #[test]
     fn given_new_gps_expect_builder_with_gps_as_signal_provider() {
-        let builder_cfg = SignalProviderBuilder::new_gps();
+        let builder_cfg = SensorBuilder::new_gps();
         assert_eq!(builder_cfg.provider_type, ProviderType::Gps);
     }
 
     #[test]
     fn given_new_frequency_expect_builder_with_set_frequency() {
         let frequency = NonZeroU32::new(5).unwrap();
-        let builder_cfg = SignalProviderBuilder::default().with_frequency(frequency);
+        let builder_cfg = SensorBuilder::default().with_frequency(frequency);
         assert_eq!(builder_cfg.frequency, frequency);
     }
 
@@ -119,14 +119,14 @@ mod tests {
     fn given_subscribers_expect_builder_with_provided_senders() {
         let (tx_1, _) = std::sync::mpsc::channel();
         let (tx_2, _) = std::sync::mpsc::channel();
-        let builder_cfg = SignalProviderBuilder::default().with_subscribers(vec![tx_1, tx_2]);
+        let builder_cfg = SensorBuilder::default().with_subscribers(vec![tx_1, tx_2]);
         assert_eq!(builder_cfg.transmitters.len(), 2);
     }
 
     #[test]
     fn given_position_generator_expect_builder_with_provided_generator() {
         let position_generator = Arc::new(Mutex::new(Data::new()));
-        let builder_cfg = SignalProviderBuilder::default()
+        let builder_cfg = SensorBuilder::default()
             .with_position_generator(Arc::clone(&position_generator));
         let expected_x = 1.0;
         let expected_y = 2.0;
@@ -148,7 +148,7 @@ mod tests {
     fn given_imu_builder_expect_spawn_to_start_imu() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
-        let handle = SignalProviderBuilder::new_imu()
+        let handle = SensorBuilder::new_imu()
             .with_subscribers(vec![tx])
             .spawn(Arc::clone(&shutdown));
 
@@ -164,7 +164,7 @@ mod tests {
     fn given_gps_builder_expect_spawn_to_start_gps() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
-        let handle = SignalProviderBuilder::new_gps()
+        let handle = SensorBuilder::new_gps()
             .with_subscribers(vec![tx])
             .spawn(Arc::clone(&shutdown));
 
