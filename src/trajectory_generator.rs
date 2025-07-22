@@ -2,6 +2,7 @@ use crate::data::Data;
 use noise::{NoiseFn, Perlin};
 use rand::Rng;
 use std::{
+    f64::consts::PI,
     num::NonZeroU32,
     sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Mutex},
@@ -11,10 +12,14 @@ use std::{
 
 use crate::utils::get_cycle_duration;
 
+const HELIX_FREQUENCY: f64 = 0.5;
+
 #[derive(Clone, Copy)]
 pub enum GenerationMode {
     Random,
     Perlin,
+    DeterminicticPerlin,
+    AngledHelical(f64),
 }
 
 pub struct TrajectoryGenerator {
@@ -22,6 +27,7 @@ pub struct TrajectoryGenerator {
     shutdown_trigger: Arc<AtomicBool>,
     mode: GenerationMode,
     seed: u32,
+    step: f64,
 }
 
 impl TrajectoryGenerator {
@@ -36,13 +42,16 @@ impl TrajectoryGenerator {
             shutdown_trigger,
             mode,
             seed,
+            step: 0.0,
         }
     }
 
-    fn generate_data(&self) -> Data {
+    fn generate_data(&mut self) -> Data {
         match self.mode {
             GenerationMode::Random => self.generate_rnd_data(),
             GenerationMode::Perlin => self.generate_perlin_data(),
+            GenerationMode::DeterminicticPerlin => self.generate_deterministic_perlin_data(),
+            GenerationMode::AngledHelical(step) => self.generate_angled_helical_data(step),
         }
     }
 
@@ -67,6 +76,23 @@ impl TrajectoryGenerator {
         }
     }
 
+    fn generate_deterministic_perlin_data(&mut self) -> Data {
+        let perlin = Perlin::new(self.seed);
+        self.step += 0.1;
+
+        let x = upscale(perlin.get([self.step, 0.0, 0.0]));
+        let y = upscale(perlin.get([0.0, self.step, 0.0]));
+        let z = upscale(perlin.get([0.0, 0.0, self.step]));
+
+        println!("Data: {x},\t {y},\t {z}");
+        Data {
+            x,
+            y,
+            z,
+            timestamp: SystemTime::now(),
+        }
+    }
+
     fn generate_rnd_data(&self) -> Data {
         let mut rng = rand::rng();
         Data {
@@ -76,11 +102,26 @@ impl TrajectoryGenerator {
             timestamp: SystemTime::now(),
         }
     }
+
+    fn generate_angled_helical_data(&mut self, step_size: f64) -> Data {
+        self.step += step_size;
+        Data {
+            x: upscale(self.step.sin()),
+            y: upscale(self.step.cos()),
+            z: upscale(self.step.sin()),
+            timestamp: SystemTime::now(),
+        }
+    }
 }
 
 #[inline]
-fn upscale(perlin_value: f64) -> f64 {
-    (perlin_value + 1.0) * 50.0
+fn upscale(value: f64) -> f64 {
+    (value + 1.0) * 50.0
+}
+
+#[inline]
+fn get_helix_step(gen_freq: u32) -> f64 {
+    2.0 * PI * (HELIX_FREQUENCY / (gen_freq as f64))
 }
 
 pub struct TrajectoryGeneratorBuilder {
@@ -104,8 +145,19 @@ impl TrajectoryGeneratorBuilder {
         self
     }
 
+    pub fn with_determinisitic_perlin_mode(mut self) -> Self {
+        self.mode = GenerationMode::DeterminicticPerlin;
+        self
+    }
+
     pub fn with_random_mode(mut self) -> Self {
         self.mode = GenerationMode::Random;
+        self
+    }
+
+    // make sure to delcare frequency before this mode
+    pub fn with_angled_helical_mode(mut self) -> Self {
+        self.mode = GenerationMode::AngledHelical(get_helix_step(self.frequency.get()));
         self
     }
 
@@ -126,7 +178,7 @@ impl TrajectoryGeneratorBuilder {
 
     pub fn spawn(&self, shutdown_trigger: Arc<AtomicBool>) -> (Arc<Mutex<Data>>, JoinHandle<()>) {
         let data_handle = Arc::new(Mutex::new(Data::new()));
-        let generator = TrajectoryGenerator::new(
+        let mut generator = TrajectoryGenerator::new(
             Arc::clone(&data_handle),
             Arc::clone(&shutdown_trigger),
             self.mode,
@@ -159,11 +211,68 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn test_trajectory_generator_updates_data() {
+    fn test_rnd_trajectory_generator_updates_data() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
             .with_frequency(NonZeroU32::new(10).unwrap())
             .with_random_mode()
+            .spawn(Arc::clone(&shutdown));
+
+        std::thread::sleep(Duration::from_millis(300));
+
+        shutdown.store(true, Ordering::SeqCst);
+        handle.join().unwrap();
+
+        let data = data_handle.lock().unwrap();
+        assert!(data.x >= 0.0 && data.x <= 100.0);
+        assert!(data.y >= 0.0 && data.y <= 100.0);
+        assert!(data.z >= 0.0 && data.z <= 100.0);
+    }
+
+    #[test]
+    fn test_angled_helical_trajectory_generator_updates_data() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
+            .with_frequency(NonZeroU32::new(5).unwrap())
+            .with_angled_helical_mode()
+            .spawn(Arc::clone(&shutdown));
+
+        std::thread::sleep(Duration::from_millis(300));
+
+        shutdown.store(true, Ordering::SeqCst);
+        handle.join().unwrap();
+
+        let data = data_handle.lock().unwrap();
+        assert!(data.x >= 0.0 && data.x <= 100.0);
+        assert!(data.y >= 0.0 && data.y <= 100.0);
+        assert!(data.z >= 0.0 && data.z <= 100.0);
+    }
+
+    #[test]
+    fn test_perlin_trajectory_generator_updates_data() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
+            .with_frequency(NonZeroU32::new(5).unwrap())
+            .with_perlin_mode()
+            .spawn(Arc::clone(&shutdown));
+
+        std::thread::sleep(Duration::from_millis(300));
+
+        shutdown.store(true, Ordering::SeqCst);
+        handle.join().unwrap();
+
+        let data = data_handle.lock().unwrap();
+        assert!(data.x >= 0.0 && data.x <= 100.0);
+        assert!(data.y >= 0.0 && data.y <= 100.0);
+        assert!(data.z >= 0.0 && data.z <= 100.0);
+    }
+
+    #[test]
+    fn test_deterministic_perlin_trajectory_generator_updates_data() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
+            .with_frequency(NonZeroU32::new(5).unwrap())
+            .with_determinisitic_perlin_mode()
             .spawn(Arc::clone(&shutdown));
 
         std::thread::sleep(Duration::from_millis(300));
