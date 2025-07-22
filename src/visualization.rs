@@ -187,6 +187,18 @@ mod tests {
         assert!(select_xyz("x", data) == 234.5);
         assert!(select_xyz("y", data) == 555.1);
         assert!(select_xyz("z", data) == 33.3);
+    }
 
+    #[test]
+    #[should_panic]
+    fn test_select_xyz_wrong_input() {
+        let data = Data {
+            x: 234.5,
+            y: 555.1,
+            z: 33.3,
+            timestamp: SystemTime::now(),
+        };
+
+        assert_eq!(select_xyz("dariajestsuper", data), 33.3);
     }
 }
