@@ -24,8 +24,8 @@ impl Visualization {
                     Telemetry::Position(d) => {
                         gps_data.push(d);
                     }
-                    Telemetry::Acceleration(_d) => {
-                        //avg_data.push(data);
+                    Telemetry::Acceleration(_) => {
+                        panic!("GPS should not return acceleration");
                     }
                 }
             }
@@ -35,8 +35,8 @@ impl Visualization {
                     Telemetry::Position(d) => {
                         avg_data.push(d);
                     }
-                    Telemetry::Acceleration(_d) => {
-                        //avg_data.push(data);
+                    Telemetry::Acceleration(_) => {
+                        panic!("Avg should not return acceleration");
                     }
                 }
             }
@@ -46,17 +46,11 @@ impl Visualization {
                     Telemetry::Position(d) => {
                         kalman_data.push(d);
                     }
-                    Telemetry::Acceleration(_d) => {
-                        //avg_data.push(data);
+                    Telemetry::Acceleration(_) => {
+                        panic!("Kalman should not return acceleration");
                     }
                 }
             }
-            // println!(
-            //     "Len avg = {} kalman = {} gps = {}",
-            //     avg_data.len(),
-            //     kalman_data.len(),
-            //     gps_data.len()
-            // );
             draw(avg_data, kalman_data, gps_data);
             println!("Visualization removed");
         });
@@ -65,12 +59,11 @@ impl Visualization {
 }
 
 fn select_xyz(coord_to_plot: &str, p: Data) -> f64 {
-    if coord_to_plot == "x" {
-        p.x
-    } else if coord_to_plot == "y" {
-        p.y
-    } else {
-        p.z
+    match coord_to_plot {
+        "x" => p.x,
+        "y" => p.y,
+        "z" => p.z,
+        _ => panic!("Such coord does not exist!"),
     }
 }
 
