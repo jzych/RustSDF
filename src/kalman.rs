@@ -7,13 +7,12 @@ use std::{
 };
 use nalgebra::{Const, Matrix3, Matrix3x6, Matrix3x1, Matrix6, Matrix6x1, Matrix6x3};
 use crate::{
+    config::IMU_FREQ,
     data::{Data, Telemetry},
     logger::log,
+    utils::*,
 };
 
-
-
-const DT_IMU : f64 = 0.05; // seconds
 const TIMING_TOLERANCE : f64 = 0.02; // 0.01 = 1% of timing tolerance
 const SIGMA_ACC : f64 = 0.1;
 const SIGMA_GPS : f64 = 0.1;
@@ -52,10 +51,10 @@ impl KalmanFilter {
         
         KalmanFilter {
             tx,
-            A: create_matrix_A(DT_IMU),
-            B: create_matrix_B(DT_IMU),
+            A: create_matrix_A(get_cycle_duration_f64(IMU_FREQ)),
+            B: create_matrix_B(get_cycle_duration_f64(IMU_FREQ)),
             H: create_matrix_H(),
-            Q: create_matrix_Q(DT_IMU, SIGMA_ACC),
+            Q: create_matrix_Q(get_cycle_duration_f64(IMU_FREQ), SIGMA_ACC),
             R: create_matrix_R(SIGMA_GPS),
             state: KalmanData::new(),
         }
@@ -158,13 +157,13 @@ fn telemetry_check(
 
             if (*imu_samples_received <= imu_samples_to_skip) || (*gps_samples_received < 2) {
                 false
-            } else if imu_elapsed > Duration::from_secs_f64(DT_IMU * (1.0 + TIMING_TOLERANCE)) {
+            } else if imu_elapsed > Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 + TIMING_TOLERANCE)) {
                 eprintln!("Kalman: IMU data is late! Previous data obtained {}s {:03}ms ago. ",
                     imu_elapsed.as_secs(),
                     imu_elapsed.subsec_millis()
                 );
                 true
-            } else if imu_elapsed >= Duration::from_secs_f64(DT_IMU * (1.0 - TIMING_TOLERANCE)) {
+            } else if imu_elapsed >= Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 - TIMING_TOLERANCE)) {
                 true
             } else if imu_elapsed > Duration::from_secs_f64(0.0) {
                 eprintln!("Kalman: IMU data received too soon! Previous data obtained {}s {:03}ms ago. ",
@@ -335,7 +334,7 @@ mod test {
             &mut prev_gps_data
         ));
 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         assert!(!telemetry_check(
             imu_samples_to_skip,
             &mut imu_samples_received,
@@ -346,7 +345,7 @@ mod test {
             &mut prev_gps_data
         ));
 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         assert!(!telemetry_check(
             imu_samples_to_skip,
             &mut imu_samples_received,
@@ -379,7 +378,7 @@ mod test {
             &mut prev_gps_data
         ));
 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         assert!(!telemetry_check(
             imu_samples_to_skip,
             &mut imu_samples_received,
@@ -390,7 +389,7 @@ mod test {
             &mut prev_gps_data
         ));
 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         assert!(!telemetry_check(
             imu_samples_to_skip,
             &mut imu_samples_received,
@@ -461,7 +460,7 @@ mod test {
             &mut prev_gps_data
         ));
 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         assert!(!telemetry_check(
             imu_samples_to_skip,
             &mut imu_samples_received,
@@ -483,7 +482,7 @@ mod test {
             &mut prev_gps_data
         ));
 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         assert!(telemetry_check(
             imu_samples_to_skip,
             &mut imu_samples_received,
@@ -524,11 +523,11 @@ mod test {
         let _ = tx_imu.send(Telemetry::Acceleration(Data { x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now() }));
         assert!(matches!(rx_from_kalman.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         let _ = tx_imu.send(Telemetry::Acceleration(Data { x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now() }));
         assert!(matches!(rx_from_kalman.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
         
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         let _ = tx_imu.send(Telemetry::Acceleration(Data { x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now() }));
         assert!(matches!(rx_from_kalman.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
         
@@ -560,23 +559,27 @@ mod test {
 
         // send zero acceleration and expect no change in position estimate ([1,1,1] - as set with gps data)
         // why is DT_IMU added to position data??? because 1(m/s) * DT_IMU(s) = DT_IMU(m) 
-        std::thread::sleep(Duration::from_secs_f64(DT_IMU));
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
         let _ = tx_imu.send(Telemetry::Acceleration(Data { x: 0.0, y: 0.0, z: 0.0, timestamp: SystemTime::now() }));
         match rx_from_kalman.recv() {
             Ok(data) => {
-                assert_eq!(data.data().x, 1.0 + DT_IMU);
-                assert_eq!(data.data().y, 1.0 + DT_IMU);
-                assert_eq!(data.data().z, 1.0 + DT_IMU);
+                assert_eq!(data.data().x, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                assert_eq!(data.data().y, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                assert_eq!(data.data().z, 1.0 + get_cycle_duration_f64(IMU_FREQ));
             },
             Err(e) => panic!("Failed to receive: {e}"),
         }
         
-        let _ = tx_gps.send(Telemetry::Position(Data { x: 1.0 + DT_IMU, y: 1.0 + DT_IMU, z: 1.0 + DT_IMU, timestamp: SystemTime::now() }));
+        let _ = tx_gps.send(Telemetry::Position(Data { 
+            x: 1.0 + get_cycle_duration_f64(IMU_FREQ), 
+            y: 1.0 + get_cycle_duration_f64(IMU_FREQ), 
+            z: 1.0 + get_cycle_duration_f64(IMU_FREQ), 
+            timestamp: SystemTime::now() }));
         match rx_from_kalman.recv() {
             Ok(data) => {
-                assert_eq!(data.data().x, 1.0 + DT_IMU);
-                assert_eq!(data.data().y, 1.0 + DT_IMU);
-                assert_eq!(data.data().z, 1.0 + DT_IMU);
+                assert_eq!(data.data().x, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                assert_eq!(data.data().y, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                assert_eq!(data.data().z, 1.0 + get_cycle_duration_f64(IMU_FREQ));
             },
             Err(e) => panic!("Failed to receive: {e}"),
         }

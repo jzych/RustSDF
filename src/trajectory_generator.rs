@@ -11,8 +11,7 @@ use std::{
 };
 
 use crate::utils::get_cycle_duration;
-
-const HELIX_FREQUENCY: f64 = 0.5;
+use crate::config::HELIX_FREQUENCY;
 
 #[derive(Clone, Copy)]
 pub enum GenerationMode {
