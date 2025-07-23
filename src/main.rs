@@ -55,6 +55,7 @@ fn start_imu(
         .with_frequency(IMU_FREQ)
         .with_position_generator(trajectory_data)
         .with_subscribers(subscribers)
+        .with_output_noise(IMU_OUTPUT_NOISE_SIGMA)
         .spawn(shutdown))
 }
 

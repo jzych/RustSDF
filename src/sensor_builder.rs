@@ -50,10 +50,7 @@ impl SensorBuilder {
     }
 
     pub fn with_frequency(self, frequency: NonZeroU32) -> Self {
-        Self {
-            frequency,
-            ..self
-        }
+        Self { frequency, ..self }
     }
 
     pub fn with_position_generator(self, position_generator: Arc<Mutex<Data>>) -> Self {
@@ -84,6 +81,7 @@ impl SensorBuilder {
                 self.transmitters,
                 shutdown,
                 self.frequency,
+                self.noise_standard_deviation,
             ),
             ProviderType::Gps => Gps::run(
                 self.position_generator,
@@ -137,10 +135,17 @@ mod tests {
     }
 
     #[test]
+    fn given_new_std_dev_expect_builder_with_set_std_dev() {
+        let std_dev = 3.5;
+        let builder_cfg = SensorBuilder::default().with_output_noise(std_dev);
+        assert_eq!(builder_cfg.noise_standard_deviation, std_dev);
+    }
+
+    #[test]
     fn given_position_generator_expect_builder_with_provided_generator() {
         let position_generator = Arc::new(Mutex::new(Data::new()));
-        let builder_cfg = SensorBuilder::default()
-            .with_position_generator(Arc::clone(&position_generator));
+        let builder_cfg =
+            SensorBuilder::default().with_position_generator(Arc::clone(&position_generator));
         let expected_x = 1.0;
         let expected_y = 2.0;
         let expected_z = 3.0;
