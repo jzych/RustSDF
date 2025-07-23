@@ -196,10 +196,11 @@ fn telemetry_check(
                     state.x[1],
                     state.x[2]
                 );
-                println!("Kalman: Initial velocity from GPS data: {}, {}, {}",
+                println!("Kalman: Initial velocity from GPS data: {}, {}, {}, dt = {}",
                     state.x[3],
                     state.x[4],
-                    state.x[5]
+                    state.x[5],
+                    delta_time,
                 );
                 false
             } else {

@@ -1,7 +1,8 @@
 use plotters::coord::Shift;
 use plotters::prelude::*;
+use std::time::SystemTime;
 use std::{sync::mpsc::Receiver, thread::JoinHandle};
-use std::{thread, time::UNIX_EPOCH};
+use std::thread;
 
 use crate::data::{Data, Telemetry};
 
@@ -13,6 +14,7 @@ impl Visualization {
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
         rx_gps: Receiver<Telemetry>,
+        simulation_start: SystemTime,
     ) -> JoinHandle<()> {
         let mut avg_data = Vec::new();
         let mut kalman_data = Vec::new();
@@ -51,7 +53,7 @@ impl Visualization {
                     }
                 }
             }
-            draw(avg_data, kalman_data, gps_data);
+            draw(avg_data, kalman_data, gps_data, simulation_start);
             println!("Visualization removed");
         });
         handle
@@ -73,19 +75,20 @@ fn create_plot(
     avg_data: &[Data],
     kalman_data: &[Data],
     gps_data: &[Data],
+    simulation_start: SystemTime,
 ) {
     let plot_start = gps_data[0]
         .timestamp
-        .duration_since(UNIX_EPOCH)
+        .duration_since(simulation_start)
         .unwrap()
-        .as_millis() as f64;
+        .as_secs_f64();
     let plot_stop = gps_data
         .last()
         .unwrap()
         .timestamp
-        .duration_since(UNIX_EPOCH)
+        .duration_since(simulation_start)
         .unwrap()
-        .as_millis() as f64;
+        .as_secs_f64();
 
     let mut chart = ChartBuilder::on(&root)
         .x_label_area_size(60)
@@ -106,7 +109,7 @@ fn create_plot(
         .draw_series(LineSeries::new(
             kalman_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(UNIX_EPOCH).unwrap().as_millis() as f64,
+                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -120,7 +123,7 @@ fn create_plot(
         .draw_series(LineSeries::new(
             avg_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(UNIX_EPOCH).unwrap().as_millis() as f64,
+                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -134,7 +137,7 @@ fn create_plot(
         .draw_series(LineSeries::new(
             gps_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(UNIX_EPOCH).unwrap().as_millis() as f64,
+                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -152,7 +155,7 @@ fn create_plot(
         .unwrap()
 }
 
-fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>) {
+fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>, simulation_start: SystemTime) {
     let root = BitMapBackend::new("output/plot_gps_avg_kalman.png", (2000, 1000)).into_drawing_area();
     root.fill(&WHITE).unwrap();
 
@@ -164,9 +167,9 @@ fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>) {
     let (_, lower_1) = split_in_3[1].split_vertically(40);
     let (_, lower_2) = split_in_3[2].split_vertically(40);
 
-    create_plot(lower_0, "x", &avg_data, &kalman_data, &gps_data);
-    create_plot(lower_1, "y", &avg_data, &kalman_data, &gps_data);
-    create_plot(lower_2, "z", &avg_data, &kalman_data, &gps_data);
+    create_plot(lower_0, "x", &avg_data, &kalman_data, &gps_data, simulation_start);
+    create_plot(lower_1, "y", &avg_data, &kalman_data, &gps_data, simulation_start);
+    create_plot(lower_2, "z", &avg_data, &kalman_data, &gps_data, simulation_start);
 }
 
 #[cfg(test)]

@@ -34,8 +34,8 @@ mod utils;
 mod visualization;
 
 //Refresh rate in Hz
-const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(10).unwrap();
-const IMU_FREQ: NonZeroU32 = NonZeroU32::new(2).unwrap();
+const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(100).unwrap();
+const IMU_FREQ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 const GPS_FREQ: NonZeroU32 = NonZeroU32::new(5).unwrap();
 
 #[allow(unused)]
@@ -120,7 +120,7 @@ fn start_visualization(
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
 
-    Visualization::run(rx_avg, rx_kalman, rx_gps)
+    Visualization::run(rx_avg, rx_kalman, rx_gps, SystemTime::now())
 
 }
 
