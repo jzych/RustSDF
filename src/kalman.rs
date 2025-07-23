@@ -309,7 +309,7 @@ mod test {
     #[test]
     fn test_KalmanData_init() {
         let kd : KalmanData = KalmanData::new();
-        assert_eq!(kd.P[(5,5)], 0.0);
+        assert_eq!(kd.P[(5,1)], 0.0);
         assert_eq!(kd.x[5], 0.0);
     }
 
