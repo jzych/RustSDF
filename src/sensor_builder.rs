@@ -84,6 +84,7 @@ impl SensorBuilder {
                 self.transmitters,
                 shutdown,
                 self.frequency,
+                self.noise_standard_deviation
             ),
             ProviderType::Gps => Gps::run(
                 self.position_generator,
@@ -134,6 +135,13 @@ mod tests {
         let (tx_2, _) = std::sync::mpsc::channel();
         let builder_cfg = SensorBuilder::default().with_subscribers(vec![tx_1, tx_2]);
         assert_eq!(builder_cfg.transmitters.len(), 2);
+    }
+
+    #[test]
+    fn given_new_std_dev_expect_builder_with_set_std_dev() {
+        let std_dev = 3.5;
+        let builder_cfg = SensorBuilder::default().with_noise(std_dev);
+        assert_eq!(builder_cfg.noise_standard_deviation, std_dev);
     }
 
     #[test]
