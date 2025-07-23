@@ -29,11 +29,11 @@ impl KalmanData {
     pub fn new() -> Self{
         Self {
             x: Matrix6x1::zeros_generic(Const::<6>, Const::<1>),
-            P: Matrix6::zeros_generic(Const::<6>, Const::<6>),            
+            // P: Matrix6::zeros_generic(Const::<6>, Const::<6>),   
+            P: create_matrix_Q(DT_IMU, SIGMA_ACC) * 10000.0,            
         }
     }
 }
-
 
 pub struct KalmanFilter {
     tx: Vec<Sender<Telemetry>>,

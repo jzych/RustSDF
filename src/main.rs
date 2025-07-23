@@ -34,6 +34,15 @@ mod trajectory_generator;
 mod utils;
 mod visualization;
 
+<<<<<<< HEAD
+=======
+//Refresh rate in Hz
+const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(100).unwrap();
+const IMU_FREQ: NonZeroU32 = NonZeroU32::new(20).unwrap();
+const GPS_FREQ: NonZeroU32 = NonZeroU32::new(5).unwrap();
+const GPS_NOISE_SD: f64 = 5.0;
+
+>>>>>>> afc9073 (Adding normal noise to GPS. Initializing Kalman P to nonzero value to improve behavior on noisy startup.)
 #[allow(unused)]
 #[derive(Debug)]
 enum Error {
@@ -73,6 +82,7 @@ fn start_gps(
         .with_frequency(GPS_FREQ)
         .with_position_generator(trajectory_data)
         .with_subscribers(subscribers)
+        .with_noise(GPS_NOISE_SD)
         .spawn(shutdown))
 }
 
