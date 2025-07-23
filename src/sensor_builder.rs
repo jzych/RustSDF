@@ -21,6 +21,7 @@ pub struct SensorBuilder {
     frequency: NonZeroU32,
     transmitters: Vec<Sender<Telemetry>>,
     position_generator: Arc<Mutex<Data>>,
+    noise_standard_deviation: f64,
 }
 
 impl SensorBuilder {
@@ -30,6 +31,7 @@ impl SensorBuilder {
             frequency: NonZeroU32::new(1).unwrap(),
             transmitters: Vec::new(),
             position_generator: Arc::new(Mutex::new(Data::new())),
+            noise_standard_deviation: 0.0,
         }
     }
 
@@ -48,7 +50,10 @@ impl SensorBuilder {
     }
 
     pub fn with_frequency(self, frequency: NonZeroU32) -> Self {
-        Self { frequency, ..self }
+        Self {
+            frequency,
+            ..self
+        }
     }
 
     pub fn with_position_generator(self, position_generator: Arc<Mutex<Data>>) -> Self {
@@ -61,6 +66,13 @@ impl SensorBuilder {
     pub fn with_subscribers(self, transmitters: Vec<Sender<Telemetry>>) -> Self {
         Self {
             transmitters,
+            ..self
+        }
+    }
+
+    pub fn with_noise(self, noise_standard_deviation: f64) -> Self {
+        Self {
+            noise_standard_deviation,
             ..self
         }
     }
@@ -78,6 +90,7 @@ impl SensorBuilder {
                 self.transmitters,
                 shutdown,
                 self.frequency,
+                self.noise_standard_deviation,
             ),
         }
     }

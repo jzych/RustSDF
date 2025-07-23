@@ -37,6 +37,7 @@ mod visualization;
 const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(100).unwrap();
 const IMU_FREQ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 const GPS_FREQ: NonZeroU32 = NonZeroU32::new(5).unwrap();
+const GPS_NOISE_SD: f64 = 5.0;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -77,6 +78,7 @@ fn start_gps(
         .with_frequency(GPS_FREQ)
         .with_position_generator(trajectory_data)
         .with_subscribers(subscribers)
+        .with_noise(GPS_NOISE_SD)
         .spawn(shutdown))
 }
 
