@@ -39,7 +39,7 @@ impl Gps {
                 tx.retain(|tx| tx.send(Telemetry::Position(current_position)).is_ok());
                 if tx.is_empty() {
                     break;
-                }                
+                }
                 thread::sleep(get_cycle_duration(frequency));
             }
         })
