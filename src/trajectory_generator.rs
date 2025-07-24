@@ -4,8 +4,7 @@ use rand::Rng;
 use std::{
     f64::consts::PI,
     num::NonZeroU32,
-    sync::atomic::{AtomicBool, Ordering},
-    sync::{Arc, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, mpsc::Receiver, Arc, Mutex},
     thread::JoinHandle,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -176,7 +175,7 @@ impl TrajectoryGeneratorBuilder {
         self
     }
 
-    pub fn spawn(&self, shutdown_trigger: Arc<AtomicBool>) -> (Arc<Mutex<Data>>, JoinHandle<()>) {
+    pub fn spawn(&self, shutdown_trigger: Arc<AtomicBool>) -> (Arc<Mutex<Data>>, JoinHandle<()>, Receiver<Data>) {
         let data_handle = Arc::new(Mutex::new(Data::new()));
         let mut generator = TrajectoryGenerator::new(
             Arc::clone(&data_handle),
@@ -184,22 +183,25 @@ impl TrajectoryGeneratorBuilder {
             self.mode,
             self.seed.unwrap_or_default(),
         );
+        let (tx, rx) = std::sync::mpsc::channel();
 
         *generator.data_handle.lock().unwrap() = generator.generate_data();
 
         let frequency = self.frequency;
         let generator_handle = std::thread::spawn(move || {
             while !generator.shutdown_trigger.load(Ordering::SeqCst) {
+                let data = generator.generate_data();
                 {
-                    *generator.data_handle.lock().unwrap() = generator.generate_data();
+                    *generator.data_handle.lock().unwrap() = data;
                 }
+                tx.send(data).unwrap();
 
                 std::thread::sleep(get_cycle_duration(frequency));
             }
             println!("Trajectory generator removed");
         });
 
-        (Arc::clone(&data_handle), generator_handle)
+        (Arc::clone(&data_handle), generator_handle, rx)
     }
 }
 

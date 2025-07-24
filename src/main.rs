@@ -2,7 +2,8 @@ use std::{
     num::NonZeroU32,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc::{self, Receiver},
+        Arc, Mutex,
     },
     thread::{self, JoinHandle},
     time::{Duration, SystemTime},
@@ -12,9 +13,9 @@ use crate::{
     average::Average,
     communication_registry::{CommunicationRegistry, DataSource},
     data::{Data, Telemetry},
-    sensor_builder::SensorBuilder,
     kalman::KalmanFilter,
     logger::{get_data, log},
+    sensor_builder::SensorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
     visualization::Visualization,
 };
@@ -28,8 +29,8 @@ mod gps;
 mod imu;
 mod kalman;
 mod logger;
-mod trajectory_generator;
 mod sensor_builder;
+mod trajectory_generator;
 mod utils;
 mod visualization;
 
@@ -39,6 +40,7 @@ const IMU_FREQ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 const GPS_FREQ: NonZeroU32 = NonZeroU32::new(5).unwrap();
 const GPS_NOISE_SD: f64 = 5.0;
 const IMU_NOISE_SD: f64 = 3.0;
+const SIMULATION_DURATION_S: u64 = 20;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -116,7 +118,8 @@ fn start_avg_filter(
 
 fn start_visualization(
     communication_registry: &mut CommunicationRegistry,
-) -> JoinHandle<()>  {
+    rx_groundtruth: Receiver<Data>,
+) -> JoinHandle<()> {
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
     let (tx_gps, rx_gps) = mpsc::channel();
@@ -124,8 +127,7 @@ fn start_visualization(
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
 
-    Visualization::run(rx_avg, rx_kalman, rx_gps, SystemTime::now())
-
+    Visualization::run(rx_avg, rx_kalman, rx_gps, rx_groundtruth, SystemTime::now())
 }
 
 fn create_data_consumer(
@@ -137,12 +139,12 @@ fn create_data_consumer(
 
     log("Consumers", source);
 
-    let consumer_start_time : SystemTime = SystemTime::now();
+    let consumer_start_time: SystemTime = SystemTime::now();
     let handle = thread::spawn(move || {
         for data in input_rx {
             match data {
                 Telemetry::Acceleration(d) => {
-                    let elapsed = consumer_start_time.elapsed().unwrap(); 
+                    let elapsed = consumer_start_time.elapsed().unwrap();
                     println!(
                         "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
                         source,
@@ -154,7 +156,7 @@ fn create_data_consumer(
                     )
                 }
                 Telemetry::Position(d) => {
-                    let elapsed = consumer_start_time.elapsed().unwrap(); 
+                    let elapsed = consumer_start_time.elapsed().unwrap();
                     println!(
                         "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
                         source,
@@ -179,19 +181,19 @@ fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
 fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
+    let (generated_data_handle, generator_handle, plotter_rx) = TrajectoryGeneratorBuilder::new()
+        .with_frequency(GENERATOR_FREQ)
+        .with_perlin_mode()
+        .spawn(Arc::clone(&shutdown_trigger));
 
     let placeholder_consumer_handle =
         create_data_consumer(DataSource::Kalman, &mut communication_registry);
     let consumer3_handle = create_data_consumer(DataSource::Average, &mut communication_registry);
 
-    let visu_handle = start_visualization(&mut communication_registry);
+    let visu_handle = start_visualization(&mut communication_registry, plotter_rx);
     let kalman_handle = start_kalman(&mut communication_registry)?;
-    
+
     let avg_handle = start_avg_filter(&mut communication_registry)?;
-    let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
-        .with_frequency(GENERATOR_FREQ)
-        .with_angled_helical_mode()
-        .spawn(Arc::clone(&shutdown_trigger));
     let imu_handle = start_imu(
         Arc::clone(&generated_data_handle),
         &mut communication_registry,
@@ -203,7 +205,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    thread::sleep(Duration::from_secs(20));
+    thread::sleep(Duration::from_secs(SIMULATION_DURATION_S));
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();

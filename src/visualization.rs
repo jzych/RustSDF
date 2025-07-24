@@ -1,8 +1,9 @@
 use plotters::coord::Shift;
 use plotters::prelude::*;
+use plotters::style::full_palette::PURPLE;
+use std::thread;
 use std::time::SystemTime;
 use std::{sync::mpsc::Receiver, thread::JoinHandle};
-use std::thread;
 
 use crate::data::{Data, Telemetry};
 
@@ -14,11 +15,13 @@ impl Visualization {
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
         rx_gps: Receiver<Telemetry>,
+        rx_groundtruth: Receiver<Data>,
         simulation_start: SystemTime,
     ) -> JoinHandle<()> {
         let mut avg_data = Vec::new();
         let mut kalman_data = Vec::new();
         let mut gps_data = Vec::new();
+        let mut groundtruth_data = Vec::new();
 
         let handle = thread::spawn(move || {
             for data in rx_gps {
@@ -53,7 +56,18 @@ impl Visualization {
                     }
                 }
             }
-            draw(avg_data, kalman_data, gps_data, simulation_start);
+
+            for data in rx_groundtruth {
+                groundtruth_data.push(data);
+            }
+
+            draw(
+                avg_data,
+                kalman_data,
+                gps_data,
+                groundtruth_data,
+                simulation_start,
+            );
             println!("Visualization removed");
         });
         handle
@@ -75,18 +89,21 @@ fn create_plot(
     avg_data: &[Data],
     kalman_data: &[Data],
     gps_data: &[Data],
+    groundthruth_data: &[Data],
     simulation_start: SystemTime,
 ) {
-    let plot_start = gps_data[0]
-        .timestamp
-        .duration_since(simulation_start)
-        .unwrap()
-        .as_secs_f64();
-    let plot_stop = gps_data
+    // let plot_start = groundthruth_data[0]
+    //     .timestamp
+    //     .duration_since(simulation_start)
+    //     .unwrap()
+    //     .as_secs_f64();
+    let simulation_start= groundthruth_data[0].timestamp;
+    let plot_start = 0.0;
+    let plot_stop = groundthruth_data
         .last()
         .unwrap()
         .timestamp
-        .duration_since(simulation_start)
+        .duration_since(groundthruth_data[0].timestamp)
         .unwrap()
         .as_secs_f64();
 
@@ -109,7 +126,10 @@ fn create_plot(
         .draw_series(LineSeries::new(
             kalman_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -123,7 +143,10 @@ fn create_plot(
         .draw_series(LineSeries::new(
             avg_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -137,7 +160,10 @@ fn create_plot(
         .draw_series(LineSeries::new(
             gps_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -148,6 +174,23 @@ fn create_plot(
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN));
 
     chart
+        .draw_series(LineSeries::new(
+            groundthruth_data.iter().map(|p| {
+                (
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
+                    select_xyz(coord_to_plot, *p),
+                )
+            }),
+            &PURPLE,
+        ))
+        .unwrap()
+        .label("Groundthruth")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], PURPLE));
+
+    chart
         .configure_series_labels()
         .border_style(BLACK)
         .background_style(WHITE.mix(0.0))
@@ -155,8 +198,15 @@ fn create_plot(
         .unwrap()
 }
 
-fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>, simulation_start: SystemTime) {
-    let root = BitMapBackend::new("output/plot_gps_avg_kalman.png", (2000, 1000)).into_drawing_area();
+fn draw(
+    avg_data: Vec<Data>,
+    kalman_data: Vec<Data>,
+    gps_data: Vec<Data>,
+    groundthruth_data: Vec<Data>,
+    simulation_start: SystemTime,
+) {
+    let root =
+        BitMapBackend::new("output/plot_gps_avg_kalman.png", (2000, 1000)).into_drawing_area();
     root.fill(&WHITE).unwrap();
 
     let (upper, lower) = root.split_vertically(40);
@@ -167,9 +217,33 @@ fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>, simula
     let (_, lower_1) = split_in_3[1].split_vertically(40);
     let (_, lower_2) = split_in_3[2].split_vertically(40);
 
-    create_plot(lower_0, "x", &avg_data, &kalman_data, &gps_data, simulation_start);
-    create_plot(lower_1, "y", &avg_data, &kalman_data, &gps_data, simulation_start);
-    create_plot(lower_2, "z", &avg_data, &kalman_data, &gps_data, simulation_start);
+    create_plot(
+        lower_0,
+        "x",
+        &avg_data,
+        &kalman_data,
+        &gps_data,
+        &groundthruth_data,
+        simulation_start,
+    );
+    create_plot(
+        lower_1,
+        "y",
+        &avg_data,
+        &kalman_data,
+        &gps_data,
+        &groundthruth_data,
+        simulation_start,
+    );
+    create_plot(
+        lower_2,
+        "z",
+        &avg_data,
+        &kalman_data,
+        &gps_data,
+        &groundthruth_data,
+        simulation_start,
+    );
 }
 
 #[cfg(test)]
