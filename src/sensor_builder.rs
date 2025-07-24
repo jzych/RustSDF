@@ -70,7 +70,7 @@ impl SensorBuilder {
         }
     }
 
-    pub fn with_noise(self, noise_standard_deviation: f64) -> Self {
+    pub fn with_output_noise(self, noise_standard_deviation: f64) -> Self {
         Self {
             noise_standard_deviation,
             ..self
