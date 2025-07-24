@@ -252,6 +252,7 @@ fn main() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
+    use std::time::Duration;
 
     use super::*;
 
