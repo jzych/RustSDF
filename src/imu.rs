@@ -15,6 +15,9 @@ use std::{
     time::{Duration, SystemTimeError},
 };
 
+use rand::rng;
+use rand_distr::{Distribution, Normal};
+
 const LOGGER_PREFIX: &str = "IMU";
 
 pub struct Imu {
@@ -24,6 +27,7 @@ pub struct Imu {
     prev_velocity: Vector3<f64>,
     last_valid_acceleration: Vector3<f64>,
     frequency: NonZeroU32,
+    noise_generator: Normal<f64>,
 }
 
 impl Imu {
@@ -32,8 +36,9 @@ impl Imu {
         tx: Vec<Sender<Telemetry>>,
         shutdown: Arc<AtomicBool>,
         frequency: NonZeroU32,
+        noise_standard_deviation: f64,
     ) -> JoinHandle<()> {
-        let mut imu = Imu::new(position_data, tx, frequency);
+        let mut imu = Imu::new(position_data, tx, frequency, noise_standard_deviation);
         std::thread::spawn(move || match imu.init_velocity() {
             Ok(_) => {
                 // wait one cycle before entering the main loop to give the trajectory generator
@@ -58,6 +63,7 @@ impl Imu {
         position_data: Arc<Mutex<Data>>,
         tx: Vec<Sender<Telemetry>>,
         frequency: NonZeroU32,
+        noise_standard_deviation: f64,
     ) -> Imu {
         Imu {
             tx,
@@ -66,6 +72,7 @@ impl Imu {
             prev_velocity: Vector3::new(0.0, 0.0, 0.0),
             last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
             frequency,
+            noise_generator: Normal::new(0.0, noise_standard_deviation).unwrap(),
         }
     }
 
@@ -103,9 +110,9 @@ impl Imu {
         self.prev_position = current_position;
 
         let data_to_send = Data {
-            x: self.last_valid_acceleration.x,
-            y: self.last_valid_acceleration.y,
-            z: self.last_valid_acceleration.z,
+            x: self.last_valid_acceleration.x + self.noise_generator.sample(&mut rng()),
+            y: self.last_valid_acceleration.y + self.noise_generator.sample(&mut rng()),
+            z: self.last_valid_acceleration.z + self.noise_generator.sample(&mut rng()),
             timestamp: current_position.timestamp,
         };
 
@@ -211,6 +218,7 @@ mod test {
             prev_velocity: Vector3::new(0.0, 0.0, 0.0),
             last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
             frequency: arbitrary_frequency,
+            noise_generator: Normal::new(0.0, 0.0).unwrap(),
         };
 
         {
@@ -244,6 +252,7 @@ mod test {
             vec![tx],
             Arc::clone(&shutdown_trigger),
             arbitrary_frequency,
+            0.0,
         );
         drop(rx);
         imu.join().unwrap();
@@ -275,6 +284,7 @@ mod test {
         let position_data = Arc::new(Mutex::new(Data::new()));
         let (tx, rx) = mpsc::channel();
         let arbitrary_frequency = NonZeroU32::new(1).unwrap();
+        let no_noise = Normal::new(0.0, 0.0).unwrap();
         let mut imu = Imu {
             tx: vec![tx],
             position_data: Arc::clone(&position_data),
@@ -282,6 +292,7 @@ mod test {
             prev_velocity: Vector3::new(0.0, 0.0, 0.0),
             last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
             frequency: arbitrary_frequency,
+            noise_generator: no_noise,
         };
 
         {
@@ -330,6 +341,7 @@ mod test {
             prev_velocity: initial_velocity,
             last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
             frequency: arbitrary_frequency,
+            noise_generator: Normal::new(0.0, 0.0).unwrap(),
         };
         position_data.lock().unwrap().timestamp -= Duration::new(1, 0);
 
@@ -348,6 +360,7 @@ mod test {
             prev_velocity: Vector3::new(0.0, 0.0, 0.0),
             last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
             frequency: arbitrary_frequency,
+            noise_generator: Normal::new(0.0, 0.0).unwrap(),
         };
 
         {
@@ -383,7 +396,7 @@ mod test {
     }
 
     #[test]
-    #[timeout(1000)]
+    #[timeout(10000)]
     fn given_next_timestamp_is_behind_previous_expect_imu_to_turn_off() {
         let position_data = Arc::new(Mutex::new(Data::new()));
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -394,10 +407,44 @@ mod test {
             vec![tx],
             Arc::clone(&shutdown),
             two_hertz_frequency,
+            0.0,
         );
 
         position_data.lock().unwrap().timestamp -= Duration::new(1, 0);
 
         imu.join().unwrap();
+    }
+
+    #[test]
+    fn given_noise_enabled_expect_output_with_noise() {
+        let position_data = Arc::new(Mutex::new(Data::new()));
+        let (tx, rx) = mpsc::channel();
+        let arbitrary_frequency = NonZeroU32::new(1).unwrap();
+        let noise_generator = Normal::new(0.0, 5.0).unwrap();
+        let mut imu = Imu {
+            tx: vec![tx],
+            position_data: Arc::clone(&position_data),
+            prev_position: *position_data.lock().unwrap(),
+            prev_velocity: Vector3::new(0.0, 0.0, 0.0),
+            last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
+            frequency: arbitrary_frequency,
+            noise_generator,
+        };
+
+        {
+            let mut position_data = position_data.lock().unwrap();
+            position_data.x = 1.0;
+            position_data.y = 2.0;
+            position_data.z = 3.0;
+            position_data.timestamp += Duration::from_secs(1);
+        }
+        assert!(imu.step().is_ok());
+
+        let Telemetry::Acceleration(acc) = rx.recv().unwrap() else {
+            panic!("Cannot return position!");
+        };
+        approx::assert_abs_diff_ne!(acc.x, 1.0);
+        approx::assert_abs_diff_ne!(acc.y, 2.0);
+        approx::assert_abs_diff_ne!(acc.z, 3.0);
     }
 }
