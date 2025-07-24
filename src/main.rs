@@ -73,6 +73,7 @@ fn start_gps(
         .with_frequency(GPS_FREQ)
         .with_position_generator(trajectory_data)
         .with_subscribers(subscribers)
+        .with_output_noise(GPS_OUTPUT_NOISE_SIGMA)
         .spawn(shutdown))
 }
 
