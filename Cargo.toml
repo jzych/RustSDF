@@ -13,4 +13,3 @@ chrono = "0.4.41"
 ntest_timeout = "0.9.3"
 plotters = "0.3"
 rand_distr = "0.5.1"
-
