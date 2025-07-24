@@ -1,7 +1,7 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc, Arc,
     },
     thread::{self, JoinHandle},
     time::{Duration, SystemTime},
@@ -14,6 +14,7 @@ use crate::{
     data::{Data, Telemetry},
     kalman::KalmanFilter,
     logger::{get_data, log},
+    non_blocking_generator::PositionGenerator,
     sensor_builder::SensorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
     visualization::Visualization,
@@ -29,6 +30,7 @@ mod gps;
 mod imu;
 mod kalman;
 mod logger;
+mod non_blocking_generator;
 mod sensor_builder;
 mod trajectory_generator;
 mod utils;
@@ -41,7 +43,7 @@ enum Error {
 }
 
 fn start_imu(
-    trajectory_data: Arc<Mutex<Data>>,
+    trajectory_data: Box<dyn PositionGenerator + Send>,
     communication_registry: &mut CommunicationRegistry,
     shutdown: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
@@ -60,7 +62,7 @@ fn start_imu(
 }
 
 fn start_gps(
-    trajectory_data: Arc<Mutex<Data>>,
+    trajectory_data: Box<dyn PositionGenerator + Send>,
     communication_registry: &mut CommunicationRegistry,
     shutdown: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
@@ -179,17 +181,21 @@ fn main() -> Result<(), Error> {
     let kalman_handle = start_kalman(&mut communication_registry)?;
 
     let avg_handle = start_avg_filter(&mut communication_registry)?;
-    let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
-        .with_frequency(GENERATOR_FREQ)
-        .with_angled_helical_mode()
-        .spawn(Arc::clone(&shutdown_trigger));
+    // let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
+    //     .with_frequency(GENERATOR_FREQ)
+    //     .with_angled_helical_mode()
+    //     .spawn(Arc::clone(&shutdown_trigger));
+    let position_generator = non_blocking_generator::get_position_generator(
+        non_blocking_generator::PositionGeneratorType::AngledHelical,
+    );
+
     let imu_handle = start_imu(
-        Arc::clone(&generated_data_handle),
+        dyn_clone::clone_box(&*position_generator),
         &mut communication_registry,
         Arc::clone(&shutdown_trigger),
     )?;
     let gps_handle = start_gps(
-        Arc::clone(&generated_data_handle),
+        position_generator,
         &mut communication_registry,
         Arc::clone(&shutdown_trigger),
     )?;
@@ -197,7 +203,7 @@ fn main() -> Result<(), Error> {
     thread::sleep(Duration::from_secs(SIMULATION_TIME));
     system_shutdown(Arc::clone(&shutdown_trigger));
 
-    generator_handle.join().unwrap();
+    // generator_handle.join().unwrap();
     imu_handle.join().unwrap();
     gps_handle.join().unwrap();
     kalman_handle.join().unwrap();

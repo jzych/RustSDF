@@ -1,5 +1,6 @@
+use crate::non_blocking_generator::PositionGenerator;
 use crate::{
-    data::{Data, Telemetry},
+    data::Telemetry,
     utils::get_cycle_duration,
 };
 use rand_distr::{Normal, Distribution};
@@ -9,15 +10,16 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::Sender,
-        Arc, Mutex,
+        Arc,
     },
     thread::{self, JoinHandle},
 };
+
 pub struct Gps;
 
 impl Gps {
     pub fn run(
-        trajectory_generator: Arc<Mutex<Data>>,
+        trajectory_generator: Box<dyn PositionGenerator>,
         mut tx: Vec<Sender<Telemetry>>,
         shutdown: Arc<AtomicBool>,
         frequency: NonZeroU32,
@@ -30,7 +32,7 @@ impl Gps {
 
         std::thread::spawn(move || {
             while !shutdown.load(Ordering::SeqCst) {
-                let mut current_position = *trajectory_generator.lock().unwrap();
+                let mut current_position = trajectory_generator.get_position();
 
                 current_position.x += gaussian_noise.sample(&mut rng());
                 current_position.y += gaussian_noise.sample(&mut rng());

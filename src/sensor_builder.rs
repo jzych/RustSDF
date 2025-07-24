@@ -1,13 +1,13 @@
 use std::{
     num::NonZeroU32,
-    sync::{atomic::AtomicBool, mpsc::Sender, Arc, Mutex},
+    sync::{atomic::AtomicBool, mpsc::Sender, Arc},
     thread::JoinHandle,
 };
 
 use crate::{
-    data::{Data, Telemetry},
+    data::Telemetry,
     gps::Gps,
-    imu::Imu,
+    imu::Imu, non_blocking_generator::PositionGenerator,
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -20,7 +20,7 @@ pub struct SensorBuilder {
     provider_type: ProviderType,
     frequency: NonZeroU32,
     transmitters: Vec<Sender<Telemetry>>,
-    position_generator: Arc<Mutex<Data>>,
+    position_generator: Option<Box<dyn PositionGenerator + Send>>,
     noise_standard_deviation: f64,
 }
 
@@ -30,7 +30,7 @@ impl SensorBuilder {
             provider_type: ProviderType::Imu,
             frequency: NonZeroU32::new(1).unwrap(),
             transmitters: Vec::new(),
-            position_generator: Arc::new(Mutex::new(Data::new())),
+            position_generator: None,
             noise_standard_deviation: 0.0,
         }
     }
@@ -53,9 +53,9 @@ impl SensorBuilder {
         Self { frequency, ..self }
     }
 
-    pub fn with_position_generator(self, position_generator: Arc<Mutex<Data>>) -> Self {
+    pub fn with_position_generator(self, position_generator: Box<dyn PositionGenerator + Send>) -> Self {
         Self {
-            position_generator,
+            position_generator: Some(position_generator),
             ..self
         }
     }
@@ -75,16 +75,20 @@ impl SensorBuilder {
     }
 
     pub fn spawn(self, shutdown: Arc<AtomicBool>) -> JoinHandle<()> {
+        let Some(position_generator) = self.position_generator else {
+            panic!("Position generator not provided.")
+        };
+
         match self.provider_type {
             ProviderType::Imu => Imu::run(
-                self.position_generator,
+                position_generator,
                 self.transmitters,
                 shutdown,
                 self.frequency,
                 self.noise_standard_deviation,
             ),
             ProviderType::Gps => Gps::run(
-                self.position_generator,
+                position_generator,
                 self.transmitters,
                 shutdown,
                 self.frequency,

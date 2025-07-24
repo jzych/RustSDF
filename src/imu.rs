@@ -2,6 +2,7 @@ use crate::{
     data::{Data, Telemetry},
     logger::log,
     utils::get_cycle_duration,
+    non_blocking_generator::PositionGenerator,
 };
 use nalgebra::Vector3;
 use std::{
@@ -9,10 +10,10 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::Sender,
-        Arc, Mutex,
+        Arc,
     },
     thread::JoinHandle,
-    time::{Duration, SystemTimeError},
+    time::{Duration, SystemTimeError, Instant},
 };
 
 use rand::rng;
@@ -22,7 +23,7 @@ const LOGGER_PREFIX: &str = "IMU";
 
 pub struct Imu {
     tx: Vec<Sender<Telemetry>>,
-    position_data: Arc<Mutex<Data>>,
+    position_data: Box<dyn PositionGenerator>,
     prev_position: Data,
     prev_velocity: Vector3<f64>,
     last_valid_acceleration: Vector3<f64>,
@@ -32,7 +33,7 @@ pub struct Imu {
 
 impl Imu {
     pub fn run(
-        position_data: Arc<Mutex<Data>>,
+        position_data: Box<dyn PositionGenerator>,
         tx: Vec<Sender<Telemetry>>,
         shutdown: Arc<AtomicBool>,
         frequency: NonZeroU32,
@@ -44,12 +45,16 @@ impl Imu {
                 // wait one cycle before entering the main loop to give the trajectory generator
                 // a chance to update position after calculating initial velocity
                 std::thread::sleep(get_cycle_duration(imu.frequency));
+                // let mut now = Instant::now();
                 while should_run(&shutdown, &imu.tx) {
                     if let Err(e) = imu.step() {
                         eprintln!("Imu internal error: {e}. Aborting.");
                         return;
                     };
+                    // while now = Instant::now();
                     std::thread::sleep(get_cycle_duration(imu.frequency));
+                    // println!("{:?}", now.elapsed());
+                    // now = Instant::now();
                 }
                 println!("Imu removed");
             }
@@ -60,15 +65,15 @@ impl Imu {
     }
 
     fn new(
-        position_data: Arc<Mutex<Data>>,
+        position_data: Box<dyn PositionGenerator>,
         tx: Vec<Sender<Telemetry>>,
         frequency: NonZeroU32,
         noise_standard_deviation: f64,
     ) -> Imu {
         Imu {
             tx,
-            position_data: Arc::clone(&position_data),
-            prev_position: *position_data.lock().unwrap(),
+            prev_position: position_data.get_position(),
+            position_data,
             prev_velocity: Vector3::new(0.0, 0.0, 0.0),
             last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
             frequency,
@@ -79,7 +84,7 @@ impl Imu {
     fn init_velocity(&mut self) -> Result<(), SystemTimeError> {
         // sleep one cycle to give trajectory generator a chance to update position
         std::thread::sleep(get_cycle_duration(self.frequency));
-        let current_position = *self.position_data.lock().unwrap();
+        let current_position = self.position_data.get_position();
 
         let delta_time = current_position
             .timestamp
@@ -93,7 +98,7 @@ impl Imu {
     }
 
     fn step(&mut self) -> Result<(), SystemTimeError> {
-        let current_position = *self.position_data.lock().unwrap();
+        let current_position = self.position_data.get_position();
 
         let delta_time = current_position
             .timestamp
