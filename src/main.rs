@@ -1,5 +1,4 @@
 use std::{
-    num::NonZeroU32,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
@@ -11,10 +10,11 @@ use std::{
 use crate::{
     average::Average,
     communication_registry::{CommunicationRegistry, DataSource},
+    config::*,
     data::{Data, Telemetry},
-    sensor_builder::SensorBuilder,
     kalman::KalmanFilter,
     logger::{get_data, log},
+    sensor_builder::SensorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
     visualization::Visualization,
 };
@@ -23,20 +23,16 @@ use chrono::{DateTime, Local};
 
 mod average;
 mod communication_registry;
+mod config;
 pub mod data;
 mod gps;
 mod imu;
 mod kalman;
 mod logger;
-mod trajectory_generator;
 mod sensor_builder;
+mod trajectory_generator;
 mod utils;
 mod visualization;
-
-//Refresh rate in Hz
-const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(100).unwrap();
-const IMU_FREQ: NonZeroU32 = NonZeroU32::new(20).unwrap();
-const GPS_FREQ: NonZeroU32 = NonZeroU32::new(5).unwrap();
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -110,9 +106,7 @@ fn start_avg_filter(
     }
 }
 
-fn start_visualization(
-    communication_registry: &mut CommunicationRegistry,
-) -> JoinHandle<()>  {
+fn start_visualization(communication_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
     let (tx_gps, rx_gps) = mpsc::channel();
@@ -121,7 +115,6 @@ fn start_visualization(
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
 
     Visualization::run(rx_avg, rx_kalman, rx_gps, SystemTime::now())
-
 }
 
 fn create_data_consumer(
@@ -133,12 +126,12 @@ fn create_data_consumer(
 
     log("Consumers", source);
 
-    let consumer_start_time : SystemTime = SystemTime::now();
+    let consumer_start_time: SystemTime = SystemTime::now();
     let handle = thread::spawn(move || {
         for data in input_rx {
             match data {
                 Telemetry::Acceleration(d) => {
-                    let elapsed = consumer_start_time.elapsed().unwrap(); 
+                    let elapsed = consumer_start_time.elapsed().unwrap();
                     println!(
                         "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
                         source,
@@ -150,7 +143,7 @@ fn create_data_consumer(
                     )
                 }
                 Telemetry::Position(d) => {
-                    let elapsed = consumer_start_time.elapsed().unwrap(); 
+                    let elapsed = consumer_start_time.elapsed().unwrap();
                     println!(
                         "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
                         source,
@@ -182,7 +175,7 @@ fn main() -> Result<(), Error> {
 
     let visu_handle = start_visualization(&mut communication_registry);
     let kalman_handle = start_kalman(&mut communication_registry)?;
-    
+
     let avg_handle = start_avg_filter(&mut communication_registry)?;
     let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
         .with_frequency(GENERATOR_FREQ)
@@ -199,7 +192,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    thread::sleep(Duration::from_secs(20));
+    thread::sleep(Duration::from_secs(SIMULATION_TIME));
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
