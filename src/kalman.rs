@@ -7,17 +7,13 @@ use std::{
 };
 use nalgebra::{Const, Matrix3, Matrix3x6, Matrix3x1, Matrix6, Matrix6x1, Matrix6x3};
 use crate::{
-    config::IMU_FREQ,
+    config::{IMU_FREQ, KALMAN_ACC_SIGMA, KALMAN_GPS_SIGMA, KALMAN_TIMING_TOLERANCE},
     data::{Data, Telemetry},
     logger::log,
     utils::*,
 };
 
-const TIMING_TOLERANCE : f64 = 0.02; // 0.01 = 1% of timing tolerance
-const SIGMA_ACC : f64 = 0.1;
-const SIGMA_GPS : f64 = 0.1;
 const LOGGER_PREFIX: &str = "KALMAN";
-
 
 #[derive(Debug, Copy, Clone)]
 pub struct KalmanData {
@@ -30,7 +26,10 @@ impl KalmanData {
         Self {
             x: Matrix6x1::zeros_generic(Const::<6>, Const::<1>),
             // P: Matrix6::zeros_generic(Const::<6>, Const::<6>),   
-            P: create_matrix_Q(DT_IMU, SIGMA_ACC) * 10000.0,            
+            P: create_matrix_Q(
+                get_cycle_duration_f64(IMU_FREQ),
+                KALMAN_ACC_SIGMA
+            ) * 10000.0, // a big number to start with arbitrarily uncertain state estimation        
         }
     }
 }
@@ -54,8 +53,8 @@ impl KalmanFilter {
             A: create_matrix_A(get_cycle_duration_f64(IMU_FREQ)),
             B: create_matrix_B(get_cycle_duration_f64(IMU_FREQ)),
             H: create_matrix_H(),
-            Q: create_matrix_Q(get_cycle_duration_f64(IMU_FREQ), SIGMA_ACC),
-            R: create_matrix_R(SIGMA_GPS),
+            Q: create_matrix_Q(get_cycle_duration_f64(IMU_FREQ), KALMAN_ACC_SIGMA),
+            R: create_matrix_R(KALMAN_GPS_SIGMA),
             state: KalmanData::new(),
         }
     }
@@ -157,13 +156,13 @@ fn telemetry_check(
 
             if (*imu_samples_received <= imu_samples_to_skip) || (*gps_samples_received < 2) {
                 false
-            } else if imu_elapsed > Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 + TIMING_TOLERANCE)) {
+            } else if imu_elapsed > Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 + KALMAN_TIMING_TOLERANCE)) {
                 eprintln!("Kalman: IMU data is late! Previous data obtained {}s {:03}ms ago. ",
                     imu_elapsed.as_secs(),
                     imu_elapsed.subsec_millis()
                 );
                 true
-            } else if imu_elapsed >= Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 - TIMING_TOLERANCE)) {
+            } else if imu_elapsed >= Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 - KALMAN_TIMING_TOLERANCE)) {
                 true
             } else if imu_elapsed > Duration::from_secs_f64(0.0) {
                 eprintln!("Kalman: IMU data received too soon! Previous data obtained {}s {:03}ms ago. ",
