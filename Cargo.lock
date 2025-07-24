@@ -8,13 +8,13 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "chrono",
- "local_pp",
  "nalgebra",
  "noise",
  "ntest_timeout",
  "once_cell",
  "piston_window",
  "plotters",
+ "plotters-piston",
  "rand 0.9.2",
  "rand_distr",
 ]
@@ -1066,15 +1066,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "local_pp"
-version = "0.1.0"
-dependencies = [
- "piston_window",
- "plotters",
- "plotters-backend",
-]
-
-[[package]]
 name = "log"
 version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1675,6 +1666,15 @@ checksum = "72ce181e3f6bf82d6c1dc569103ca7b1bd964c60ba03d7e6cdfbb3e3eb7f7405"
 dependencies = [
  "gif 0.12.0",
  "image 0.24.9",
+ "plotters-backend",
+]
+
+[[package]]
+name = "plotters-piston"
+version = "0.3.1"
+dependencies = [
+ "piston_window",
+ "plotters",
  "plotters-backend",
 ]
 

@@ -1,4 +1,4 @@
-use local_pp::{draw_piston_window, PistonBackend};
+use plotters_piston::{draw_piston_window, PistonBackend};
 use piston_window::{EventLoop, PistonWindow, WindowSettings};
 use plotters::coord::types::RangedCoordf64;
 use plotters::prelude::*;
