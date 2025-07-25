@@ -1,6 +1,5 @@
 use std::num::NonZeroU32;
 // Here are stored configuration values for the project
-pub const SIMULATION_TIME: u64 = 20;
 
 // Refresh rate for tasks in Hz
 pub const GENERATOR_FREQ: NonZeroU32 = NonZeroU32::new(100).unwrap();
@@ -15,6 +14,9 @@ pub const GPS_OUTPUT_NOISE_SIGMA: f64 = 1.0;
 pub const IMU_OUTPUT_NOISE_SIGMA: f64 = 1.0;
 
 // Kalman tuning parameters
-pub const KALMAN_TIMING_TOLERANCE : f64 = 0.02; // 0.01 = 1% of timing tolerance
-pub const KALMAN_ACC_SIGMA : f64 = 0.1;
-pub const KALMAN_GPS_SIGMA : f64 = 0.1;
+pub const KALMAN_TIMING_TOLERANCE: f64 = 0.02; // 0.01 = 1% of timing tolerance
+pub const KALMAN_ACC_SIGMA: f64 = 0.1;
+pub const KALMAN_GPS_SIGMA: f64 = 0.1;
+
+// Visualiziation parameters
+pub const FPS: u32 = 1;
