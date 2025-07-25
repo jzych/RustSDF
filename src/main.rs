@@ -8,13 +8,12 @@ use std::{
 };
 
 use crate::{
-    average::Average,
     communication_registry::{CommunicationRegistry, DataSource},
     config::*,
     data::{Data, Telemetry},
-    kalman::KalmanFilter,
     logger::{get_data, log},
     sensor_builder::SensorBuilder,
+    estimator_builder::EstimatorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
     visualization::Visualization,
 };
@@ -30,6 +29,7 @@ mod imu;
 mod kalman;
 mod logger;
 mod sensor_builder;
+mod estimator_builder;
 mod trajectory_generator;
 mod utils;
 mod visualization;
@@ -87,7 +87,11 @@ fn start_kalman(
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
 
     match communication_registry.get_registered_transmitters(DataSource::Kalman) {
-        Some(transmitters) => Ok(KalmanFilter::run(transmitters, input_rx)),
+        Some(subscribers) => Ok(
+            EstimatorBuilder::new_kalman().
+            with_subscribers(subscribers).
+            with_input_rx(input_rx).
+            spawn()),
         None => Err(Error::StartupError(
             "No subscribers for Kalman. Start aborted.",
         )),
@@ -101,7 +105,11 @@ fn start_avg_filter(
     communication_registry.register_for_input(DataSource::Gps, tx);
 
     match communication_registry.get_registered_transmitters(DataSource::Average) {
-        Some(transmitters) => Ok(Average::run(transmitters, input_rx)),
+        Some(subscribers) => Ok(
+            EstimatorBuilder::new_average().
+            with_subscribers(subscribers).
+            with_input_rx(input_rx).
+            spawn()),
         None => Err(Error::StartupError(
             "No subscribers for Average filter. Start aborted.",
         )),
