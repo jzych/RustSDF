@@ -19,6 +19,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: recursive
     
     - name: Install dependency for plotters
       run: sudo apt-get install libfontconfig libfontconfig1-dev
