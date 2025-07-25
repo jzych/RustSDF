@@ -1,5 +1,6 @@
 use crate::{
     data::{Data, Telemetry},
+    imu::error::NoSubscribers,
     logger::log,
     periodic_runner,
     utils::get_cycle_duration,
@@ -17,21 +18,12 @@ use std::{
     time::Duration,
 };
 
+pub mod error;
+
 use rand::rng;
 use rand_distr::{Distribution, Normal};
 
 const LOGGER_PREFIX: &str = "IMU";
-
-#[derive(Debug)]
-struct NoSubscribers;
-
-impl std::fmt::Display for NoSubscribers {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "No subscribers for IMU output.")
-    }
-}
-
-impl std::error::Error for NoSubscribers {}
 
 pub struct Imu {
     tx: Vec<Sender<Telemetry>>,
@@ -173,7 +165,10 @@ fn calculate_acceleration(
 #[cfg(test)]
 mod test {
     use ntest_timeout::timeout;
-    use std::{sync::mpsc, time::{SystemTime, SystemTimeError}};
+    use std::{
+        sync::mpsc,
+        time::{SystemTime, SystemTimeError},
+    };
 
     use super::*;
 
@@ -356,7 +351,10 @@ mod test {
         };
         position_data.lock().unwrap().timestamp -= Duration::new(1, 0);
 
-        assert!(matches!(imu.step().unwrap_err().downcast::<SystemTimeError>(), Ok(_)));
+        assert!(matches!(
+            imu.step().unwrap_err().downcast::<SystemTimeError>(),
+            Ok(_)
+        ));
     }
 
     #[test]
@@ -374,7 +372,10 @@ mod test {
             noise_generator: Normal::new(0.0, 0.0).unwrap(),
         };
 
-        assert!(matches!(imu.step().unwrap_err().downcast::<NoSubscribers>(), Ok(_)));
+        assert!(matches!(
+            imu.step().unwrap_err().downcast::<NoSubscribers>(),
+            Ok(_)
+        ));
     }
 
     #[test]
