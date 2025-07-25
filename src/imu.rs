@@ -1,10 +1,13 @@
 use crate::{
     data::{Data, Telemetry},
+    imu::error::NoSubscribers,
     logger::log,
+    periodic_runner,
     utils::get_cycle_duration,
 };
 use nalgebra::Vector3;
 use std::{
+    error::Error,
     num::NonZeroU32,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -12,8 +15,10 @@ use std::{
         Arc, Mutex,
     },
     thread::JoinHandle,
-    time::{Duration, SystemTimeError},
+    time::Duration,
 };
+
+pub mod error;
 
 use rand::rng;
 use rand_distr::{Distribution, Normal};
@@ -44,13 +49,16 @@ impl Imu {
                 // wait one cycle before entering the main loop to give the trajectory generator
                 // a chance to update position after calculating initial velocity
                 std::thread::sleep(get_cycle_duration(imu.frequency));
-                while should_run(&shutdown, &imu.tx) {
-                    if let Err(e) = imu.step() {
-                        eprintln!("Imu internal error: {e}. Aborting.");
-                        return;
-                    };
-                    std::thread::sleep(get_cycle_duration(imu.frequency));
+
+                let running_period = get_cycle_duration(imu.frequency);
+                if let Err(e) = periodic_runner::run_periodicaly(
+                    || imu.step(),
+                    || should_stop(&shutdown),
+                    running_period,
+                ) {
+                    eprintln!("Imu internal error: {e}. Aborting.")
                 }
+
                 println!("Imu removed");
             }
             Err(e) => {
@@ -76,7 +84,7 @@ impl Imu {
         }
     }
 
-    fn init_velocity(&mut self) -> Result<(), SystemTimeError> {
+    fn init_velocity(&mut self) -> Result<(), Box<dyn Error>> {
         // sleep one cycle to give trajectory generator a chance to update position
         std::thread::sleep(get_cycle_duration(self.frequency));
         let current_position = *self.position_data.lock().unwrap();
@@ -92,7 +100,7 @@ impl Imu {
         Ok(())
     }
 
-    fn step(&mut self) -> Result<(), SystemTimeError> {
+    fn step(&mut self) -> Result<(), Box<dyn Error>> {
         let current_position = *self.position_data.lock().unwrap();
 
         let delta_time = current_position
@@ -117,18 +125,22 @@ impl Imu {
         };
 
         log(LOGGER_PREFIX, data_to_send);
-        self.send_data(data_to_send);
+        self.send_data(data_to_send)?;
         Ok(())
     }
 
-    fn send_data(&mut self, data: Data) {
+    fn send_data(&mut self, data: Data) -> Result<(), NoSubscribers> {
+        if self.tx.is_empty() {
+            return Err(NoSubscribers);
+        }
         self.tx
             .retain(|tx| tx.send(Telemetry::Acceleration(data)).is_ok());
+        Ok(())
     }
 }
 
-fn should_run(shutdown_flag: &Arc<AtomicBool>, transmitters: &[Sender<Telemetry>]) -> bool {
-    !shutdown_flag.load(Ordering::SeqCst) && !transmitters.is_empty()
+fn should_stop(shutdown_flag: &Arc<AtomicBool>) -> bool {
+    shutdown_flag.load(Ordering::SeqCst)
 }
 
 fn calculate_velocity(
@@ -153,7 +165,10 @@ fn calculate_acceleration(
 #[cfg(test)]
 mod test {
     use ntest_timeout::timeout;
-    use std::{sync::mpsc, time::SystemTime};
+    use std::{
+        sync::mpsc,
+        time::{SystemTime, SystemTimeError},
+    };
 
     use super::*;
 
@@ -261,22 +276,13 @@ mod test {
     #[test]
     fn given_no_shutdown_signal_and_transmitters_presend_expect_run() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (tx, _) = mpsc::channel();
-        assert!(should_run(&shutdown_trigger, &[tx]));
+        assert!(!should_stop(&shutdown_trigger));
     }
 
     #[test]
     fn given_shutdown_signal_expect_stop() {
         let shutdown_trigger = Arc::new(AtomicBool::new(true));
-        let (tx, _) = mpsc::channel();
-        assert!(!should_run(&shutdown_trigger, &[tx]));
-    }
-
-    #[test]
-    fn given_no_transmitters_signal_expect_stop() {
-        let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let empty: Vec<Sender<Telemetry>> = Vec::new();
-        assert!(!should_run(&shutdown_trigger, &empty));
+        assert!(should_stop(&shutdown_trigger));
     }
 
     #[test]
@@ -329,7 +335,7 @@ mod test {
     }
 
     #[test]
-    fn given_next_timestamp_is_behind_previous_expect_run_to_return_err() {
+    fn given_next_timestamp_is_behind_previous_expect_step_to_return_system_time_err() {
         let initial_velocity = Vector3::new(0.0, 0.0, 0.0);
         let position_data = Arc::new(Mutex::new(Data::new()));
         let arbitrary_frequency = NonZeroU32::new(1).unwrap();
@@ -345,7 +351,29 @@ mod test {
         };
         position_data.lock().unwrap().timestamp -= Duration::new(1, 0);
 
-        assert!(imu.step().is_err());
+        assert!(imu
+            .step()
+            .unwrap_err()
+            .downcast::<SystemTimeError>()
+            .is_ok());
+    }
+
+    #[test]
+    fn given_no_subscribers_expect_step_to_return_no_subs_error() {
+        let initial_velocity = Vector3::new(0.0, 0.0, 0.0);
+        let position_data = Arc::new(Mutex::new(Data::new()));
+        let arbitrary_frequency = NonZeroU32::new(1).unwrap();
+        let mut imu = Imu {
+            tx: vec![],
+            position_data: Arc::clone(&position_data),
+            prev_position: *position_data.lock().unwrap(),
+            prev_velocity: initial_velocity,
+            last_valid_acceleration: Vector3::new(0.0, 0.0, 0.0),
+            frequency: arbitrary_frequency,
+            noise_generator: Normal::new(0.0, 0.0).unwrap(),
+        };
+
+        assert!(imu.step().unwrap_err().downcast::<NoSubscribers>().is_ok());
     }
 
     #[test]
