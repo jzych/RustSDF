@@ -268,23 +268,23 @@ mod test {
     fn test_create_matrix_A() {
         let dt = 0.1;
         let A = create_matrix_A(dt);
-        assert_eq!(A[(0, 0)], 1.0);
-        assert_eq!(A[(0, 3)], dt);
+        approx::assert_abs_diff_eq!(A[(0, 0)], 1.0);
+        approx::assert_abs_diff_eq!(A[(0, 3)], dt);
     }
 
     #[test]
     fn test_create_matrix_B() {
         let dt = 0.1;
         let B = create_matrix_B(dt);
-        assert_eq!(B[(0, 0)], dt*dt*0.5);
-        assert_eq!(B[(0, 1)], 0.0);
+        approx::assert_abs_diff_eq!(B[(0, 0)], dt*dt*0.5);
+        approx::assert_abs_diff_eq!(B[(0, 1)], 0.0);
     }
 
     #[test]
     fn test_create_matrix_H() {
         let H = create_matrix_H();
-        assert_eq!(H[(0, 0)], 1.0);
-        assert_eq!(H[(0, 1)], 0.0);
+        approx::assert_abs_diff_eq!(H[(0, 0)], 1.0);
+        approx::assert_abs_diff_eq!(H[(0, 1)], 0.0);
     }
 
     #[test]
@@ -292,23 +292,23 @@ mod test {
         let dt = 0.1;
         let sigma = 1.0;
         let Q = create_matrix_Q(dt, sigma);
-        assert_eq!(Q[(0, 0)], dt.powi(4)/4.0 * sigma);
-        assert_eq!(Q[(0, 1)], 0.0);
+        approx::assert_abs_diff_eq!(Q[(0, 0)], dt.powi(4)/4.0 * sigma);
+        approx::assert_abs_diff_eq!(Q[(0, 1)], 0.0);
     }
 
     #[test]
     fn test_create_matrix_R() {
         let sigma = 0.01;
         let R = create_matrix_R(sigma);
-        assert_eq!(R[(0, 0)], sigma);
-        assert_eq!(R[(0, 1)], 0.0);
+        approx::assert_abs_diff_eq!(R[(0, 0)], sigma);
+        approx::assert_abs_diff_eq!(R[(0, 1)], 0.0);
     }
 
     #[test]
     fn test_KalmanData_init() {
         let kd : KalmanData = KalmanData::new();
-        assert_eq!(kd.P[(5,1)], 0.0);
-        assert_eq!(kd.x[5], 0.0);
+        approx::assert_abs_diff_eq!(kd.P[(5,1)], 0.0);
+        approx::assert_abs_diff_eq!(kd.x[5], 0.0);
     }
 
     #[test]
@@ -561,9 +561,9 @@ mod test {
         let _ = tx_imu.send(Telemetry::Acceleration(Data { x: 0.0, y: 0.0, z: 0.0, timestamp: SystemTime::now() }));
         match rx_from_kalman.recv() {
             Ok(data) => {
-                assert_eq!(data.data().x, 1.0 + get_cycle_duration_f64(IMU_FREQ));
-                assert_eq!(data.data().y, 1.0 + get_cycle_duration_f64(IMU_FREQ));
-                assert_eq!(data.data().z, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                approx::assert_abs_diff_eq!(data.data().x, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                approx::assert_abs_diff_eq!(data.data().y, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                approx::assert_abs_diff_eq!(data.data().z, 1.0 + get_cycle_duration_f64(IMU_FREQ));
             },
             Err(e) => panic!("Failed to receive: {e}"),
         }
@@ -575,9 +575,9 @@ mod test {
             timestamp: SystemTime::now() }));
         match rx_from_kalman.recv() {
             Ok(data) => {
-                assert_eq!(data.data().x, 1.0 + get_cycle_duration_f64(IMU_FREQ));
-                assert_eq!(data.data().y, 1.0 + get_cycle_duration_f64(IMU_FREQ));
-                assert_eq!(data.data().z, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                approx::assert_abs_diff_eq!(data.data().x, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                approx::assert_abs_diff_eq!(data.data().y, 1.0 + get_cycle_duration_f64(IMU_FREQ));
+                approx::assert_abs_diff_eq!(data.data().z, 1.0 + get_cycle_duration_f64(IMU_FREQ));
             },
             Err(e) => panic!("Failed to receive: {e}"),
         }

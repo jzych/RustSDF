@@ -1,8 +1,6 @@
 use std::{
     collections::VecDeque,
-    sync::{
-        mpsc::{Receiver, Sender}, 
-    },
+    sync::mpsc::{Receiver, Sender},
     thread::{self, JoinHandle},
     time::SystemTime,
 };
@@ -97,9 +95,9 @@ mod test {
 
         let calculate_average_output: Data = Average::calculate_average(&buffer);
 
-        assert!(calculate_average_output.x == local_avg_x);
-        assert!(calculate_average_output.y == local_avg_y);
-        assert!(calculate_average_output.z == local_avg_z);
+        approx::assert_abs_diff_eq!(calculate_average_output.x, local_avg_x);
+        approx::assert_abs_diff_eq!(calculate_average_output.y, local_avg_y);
+        approx::assert_abs_diff_eq!(calculate_average_output.z, local_avg_z);
     }
 
     #[test]
@@ -115,7 +113,7 @@ mod test {
         gen_vectors(2, &mut buffer);
         Average::handle_data_buffer(&mut buffer, data);
         assert!(buffer.len() == 3);
-        assert!(buffer[2].x == data.x);
+        approx::assert_abs_diff_eq!(buffer[2].x, data.x);
 
         buffer.clear();
         assert!(buffer.is_empty());
@@ -123,7 +121,7 @@ mod test {
         gen_vectors(10, &mut buffer);
         Average::handle_data_buffer(&mut buffer, data);
         assert!(buffer.len() == 10);
-        assert!(buffer[9].x == data.x);
+        approx::assert_abs_diff_eq!(buffer[9].x, data.x);
     }
 
     fn gen_vectors(vec_len: u8, buffer: &mut VecDeque<Data>) {
