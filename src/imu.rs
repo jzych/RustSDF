@@ -351,10 +351,11 @@ mod test {
         };
         position_data.lock().unwrap().timestamp -= Duration::new(1, 0);
 
-        assert!(matches!(
-            imu.step().unwrap_err().downcast::<SystemTimeError>(),
-            Ok(_)
-        ));
+        assert!(imu
+            .step()
+            .unwrap_err()
+            .downcast::<SystemTimeError>()
+            .is_ok());
     }
 
     #[test]
@@ -372,10 +373,7 @@ mod test {
             noise_generator: Normal::new(0.0, 0.0).unwrap(),
         };
 
-        assert!(matches!(
-            imu.step().unwrap_err().downcast::<NoSubscribers>(),
-            Ok(_)
-        ));
+        assert!(imu.step().unwrap_err().downcast::<NoSubscribers>().is_ok());
     }
 
     #[test]
