@@ -33,6 +33,7 @@ mod estimator_builder;
 mod trajectory_generator;
 mod utils;
 mod visualization;
+mod periodic_runner;
 
 #[allow(unused)]
 #[derive(Debug)]
