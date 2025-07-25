@@ -1,10 +1,12 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc,
+        mpsc::Receiver,
+        Arc, Mutex,
     },
     thread::{self, JoinHandle},
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 use crate::{
@@ -12,6 +14,7 @@ use crate::{
     config::*,
     data::{Data, Telemetry},
     logger::{get_data, log},
+    real_time_visualization::RealTimeVisualization,
     sensor_builder::SensorBuilder,
     estimator_builder::EstimatorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
@@ -28,6 +31,7 @@ mod gps;
 mod imu;
 mod kalman;
 mod logger;
+mod real_time_visualization;
 mod sensor_builder;
 mod estimator_builder;
 mod trajectory_generator;
@@ -175,9 +179,30 @@ fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
     shutdown_trigger.store(true, Ordering::SeqCst);
 }
 
+fn register_dynamic_plot(
+    communication_registry: &mut CommunicationRegistry,
+) -> (
+    Receiver<Telemetry>,
+    Receiver<Telemetry>,
+    Receiver<Telemetry>,
+) {
+    let (tx_gps, rx_gps) = mpsc::channel();
+    let (tx_avg, rx_avg) = mpsc::channel();
+    let (tx_kalman, rx_kalman) = mpsc::channel();
+
+    communication_registry.register_for_input(DataSource::Gps, tx_gps);
+    communication_registry.register_for_input(DataSource::Average, tx_avg);
+    communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
+
+    (rx_gps, rx_avg, rx_kalman)
+}
+
 fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
+
+    let (dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman) =
+        register_dynamic_plot(&mut communication_registry);
 
     let placeholder_consumer_handle =
         create_data_consumer(DataSource::Kalman, &mut communication_registry);
@@ -202,7 +227,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    thread::sleep(Duration::from_secs(SIMULATION_TIME));
+    RealTimeVisualization::run(dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman);
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
@@ -235,6 +260,7 @@ fn main() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
+    use std::time::Duration;
 
     use super::*;
 
