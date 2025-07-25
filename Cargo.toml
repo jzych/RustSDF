@@ -15,3 +15,4 @@ rand_distr = "0.5.1"
 plotters = "0.3.7"
 piston_window = "0.132.0"
 plotters-piston = {version = "0.3.1", path = "plotters-piston"}
+assertables = "9.8.1"
