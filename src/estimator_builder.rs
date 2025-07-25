@@ -61,16 +61,16 @@ impl EstimatorBuilder {
     }
 
     pub fn spawn(self) -> JoinHandle<()> {
-        match &self.input_rx_option {
-            Some(_) => {
+        match self.input_rx_option {
+            Some(input_rx) => {
                 match self.estimator_type {
                     EstimatorType::Average => Average::run(
                         self.subscribers,
-                        self.input_rx_option.unwrap(),
+                        input_rx,
                     ),
                     EstimatorType::Kalman => KalmanFilter::run(
                         self.subscribers,
-                        self.input_rx_option.unwrap(),
+                        input_rx,
                     ),
                 }
             },
