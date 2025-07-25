@@ -189,6 +189,6 @@ impl RealTimeVisualization {
             ))
             .unwrap()
             .label(label)
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color));
     }
 }
