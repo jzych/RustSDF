@@ -1,5 +1,6 @@
 use piston_window::{EventLoop, PistonWindow, WindowSettings};
 use plotters::coord::types::RangedCoordf64;
+use plotters::coord::Shift;
 use plotters::prelude::*;
 use plotters_piston::{draw_piston_window, PistonBackend};
 
@@ -23,6 +24,7 @@ pub struct RealTimeVisualization {
     rx_avg: Receiver<Telemetry>,
     rx_kalman: Receiver<Telemetry>,
     plot_start: f64,
+    simulation_start: SystemTime,
 }
 
 impl RealTimeVisualization {
@@ -30,6 +32,7 @@ impl RealTimeVisualization {
         rx_gps: Receiver<Telemetry>,
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
+        simulation_start: SystemTime,
     ) -> RealTimeVisualization {
         RealTimeVisualization {
             gps_data: VecDeque::from(
@@ -45,9 +48,10 @@ impl RealTimeVisualization {
             rx_avg,
             rx_kalman,
             plot_start: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
+                .duration_since(simulation_start)
                 .unwrap()
-                .as_millis() as f64,
+                .as_secs_f64(),
+            simulation_start,
         }
     }
 
@@ -55,6 +59,7 @@ impl RealTimeVisualization {
         rx_gps: Receiver<Telemetry>,
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
+        simulation_start: SystemTime,
     ) {
         let mut window: PistonWindow = WindowSettings::new("RustSFD", [450, 300])
             .samples(4)
@@ -64,7 +69,7 @@ impl RealTimeVisualization {
 
         window.set_max_fps(config::FPS as u64);
 
-        let mut real_time_visualization = RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman);
+        let mut real_time_visualization = RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, simulation_start);
 
         while draw_piston_window(&mut window, |b: PistonBackend<'_, '_>| {
             real_time_visualization.get_plot_data(PlotDataType::Gps);
@@ -106,10 +111,16 @@ impl RealTimeVisualization {
         upper.titled("RustSDF", ("comic-sans", 30)).unwrap();
 
         let split_in_3 = lower.split_evenly((3, 1));
-        let (_, _lower_0) = split_in_3[0].split_vertically(40);
-        let (_, _lower_1) = split_in_3[1].split_vertically(40);
-        let (_, _lower_2) = split_in_3[2].split_vertically(40);
+        let (_, lower_0) = split_in_3[0].split_vertically(40);
+        let (_, lower_1) = split_in_3[1].split_vertically(40);
+        let (_, lower_2) = split_in_3[2].split_vertically(40);
 
+        self.draw_coordinate(lower_0, "x");
+        self.draw_coordinate(lower_1, "y");
+        self.draw_coordinate(lower_2, "z");
+    }
+
+    fn draw_coordinate(&mut self, root: DrawingArea<PistonBackend<'_, '_>, Shift>, coord: &str) {
         let plot_stop = self.get_plot_range();
 
         let mut chart = ChartBuilder::on(&root)
@@ -123,7 +134,7 @@ impl RealTimeVisualization {
         chart
             .configure_mesh()
             .x_desc("time")
-            .y_desc("x")
+            .y_desc(coord)
             .draw()
             .unwrap();
 
@@ -143,9 +154,9 @@ impl RealTimeVisualization {
         let plot_stop = match self.gps_data.back() {
             Some(data) => data
                 .timestamp
-                .duration_since(UNIX_EPOCH)
+                .duration_since(self.simulation_start)
                 .unwrap()
-                .as_millis() as f64,
+                .as_secs_f64(),
             None => panic!("Trying to access empty buffer!"),
         };
 
@@ -155,9 +166,9 @@ impl RealTimeVisualization {
                 .front()
                 .unwrap()
                 .timestamp
-                .duration_since(UNIX_EPOCH)
+                .duration_since(self.simulation_start)
                 .unwrap()
-                .as_millis() as f64;
+                .as_secs_f64();
         }
 
         plot_stop
@@ -178,7 +189,7 @@ impl RealTimeVisualization {
             .draw_series(LineSeries::new(
                 data.iter().map(|p| {
                     (
-                        p.timestamp.duration_since(UNIX_EPOCH).unwrap().as_millis() as f64,
+                        p.timestamp.duration_since(self.simulation_start).unwrap().as_secs_f64(),
                         p.x,
                     )
                 }),
