@@ -212,6 +212,7 @@ mod tests {
     use super::*;
 
     use std::time::SystemTime;
+    use std::path::Path;
 
     #[test]
     fn test_select_xyz() {
@@ -238,5 +239,19 @@ mod tests {
         };
 
         assert_eq!(select_xyz("dariajestsuper", data), 33.3);
+    }
+
+    #[test]
+    fn test_plot_file_generated() {
+        let simulation_time = SystemTime::now();
+
+        let avg_data = vec![Data::new()];
+        let kalman_data = vec![Data::new()];
+        let gps_data = vec![Data::new()];
+
+        draw(avg_data, kalman_data, gps_data, simulation_time);
+
+        let path = Path::new("output/plot_gps_avg_kalman.png");
+        assert!(path.exists());
     }
 }
