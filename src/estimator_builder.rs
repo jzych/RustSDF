@@ -1,7 +1,6 @@
 use std::{
     sync::mpsc::Sender,
     thread::JoinHandle,
-    sync::mpsc,
     sync::mpsc::{Receiver},
 };
 
@@ -20,17 +19,15 @@ enum EstimatorType {
 pub struct EstimatorBuilder {
     estimator_type: EstimatorType,
     subscribers: Vec<Sender<Telemetry>>,
-    input_rx: Receiver<Telemetry>,
+    input_rx_option: Option<Receiver<Telemetry>>,
 }
 
 impl EstimatorBuilder {
-    fn default() -> Self {
-        let (_, rx) = mpsc::channel(); // tx is dropped, rx will never receive anything
-        
+    fn default() -> Self {        
         Self {
             estimator_type: EstimatorType::Average,
             subscribers: Vec::new(),
-            input_rx: rx,    
+            input_rx_option: None,    
         }
     }
 
@@ -56,23 +53,30 @@ impl EstimatorBuilder {
     }
 
     pub fn with_input_rx(self, input_rx: Receiver<Telemetry>) -> Self {
+        let input_rx_option = Some(input_rx);
         Self {
-            input_rx,
+            input_rx_option,
             ..self
         }
     }
 
     pub fn spawn(self) -> JoinHandle<()> {
-        match self.estimator_type {
-            EstimatorType::Average => Average::run(
-                self.subscribers,
-                self.input_rx,
-            ),
-            EstimatorType::Kalman => KalmanFilter::run(
-                self.subscribers,
-                self.input_rx,
-            ),
+        match &self.input_rx_option {
+            Some(_) => {
+                match self.estimator_type {
+                    EstimatorType::Average => Average::run(
+                        self.subscribers,
+                        self.input_rx_option.unwrap(),
+                    ),
+                    EstimatorType::Kalman => KalmanFilter::run(
+                        self.subscribers,
+                        self.input_rx_option.unwrap(),
+                    ),
+                }
+            },
+            None => panic!("Estimator Builder: Estimator with no receiving end tried to spawn!"),
         }
+
     }
 }
 
@@ -114,17 +118,28 @@ mod tests {
 
     #[test]
     #[timeout(10000)]
+    #[should_panic]
+    fn given_no_input_rx_expect_panic_on_spawn() {
+        let _ = 
+            EstimatorBuilder::new_kalman()
+            .spawn();
+    }
+
+    #[test]
+    #[timeout(10000)]
     fn given_input_rx_expect_builder_with_set_input_rx() {
         let (tx, input_rx) = std::sync::mpsc::channel();
         let builder_cfg = EstimatorBuilder::default().with_input_rx(input_rx);
         tx.send(Telemetry::Acceleration(Data::new())).unwrap();
-        assert!(builder_cfg.input_rx.recv().is_ok());
+        assert!(builder_cfg.input_rx_option.unwrap().recv().is_ok());
     }
 
     #[test]
     #[timeout(10000)]
     fn given_average_builder_expect_spawn_to_spawn_average_thread() {
+        let (_, input_rx) = std::sync::mpsc::channel();
         let handle = EstimatorBuilder::new_average()
+            .with_input_rx(input_rx)
             .spawn();
         assert!(handle.join().is_ok());
     }
@@ -132,7 +147,9 @@ mod tests {
     #[test]
     #[timeout(10000)]
     fn given_kalman_builder_expect_spawn_to_spawn_kalman_thread() {
+        let (_, input_rx) = std::sync::mpsc::channel();
         let handle = EstimatorBuilder::new_kalman()
+            .with_input_rx(input_rx)
             .spawn();
         assert!(handle.join().is_ok());
     }
