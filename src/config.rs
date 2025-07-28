@@ -11,7 +11,7 @@ pub const HELIX_FREQUENCY: f64 = 0.5;
 
 // Sensor output noise parameters
 pub const GPS_OUTPUT_NOISE_SIGMA: f64 = 1.0;
-pub const IMU_OUTPUT_NOISE_SIGMA: f64 = 0.0;
+pub const IMU_OUTPUT_NOISE_SIGMA: f64 = 1.0;
 
 // Kalman tuning parameters
 pub const KALMAN_TIMING_TOLERANCE: f64 = 0.02; // 0.01 = 1% of timing tolerance
