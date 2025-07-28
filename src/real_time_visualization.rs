@@ -14,6 +14,7 @@ enum PlotDataType {
     Gps,
     Avg,
     Kalman,
+    Inertial,
 }
 
 #[derive(Debug)]
@@ -33,9 +34,11 @@ pub struct RealTimeVisualization {
     gps_data: VecDeque<Data>,
     avg_data: VecDeque<Data>,
     kalman_data: VecDeque<Data>,
+    inertial_data: VecDeque<Data>,
     rx_gps: Receiver<Telemetry>,
     rx_avg: Receiver<Telemetry>,
     rx_kalman: Receiver<Telemetry>,
+    rx_inertial: Receiver<Telemetry>,
     plot_start: i128,
     plot_stop: i128,
     simulation_start: SystemTime,
@@ -46,6 +49,7 @@ impl RealTimeVisualization {
         rx_gps: Receiver<Telemetry>,
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
+        rx_inertial: Receiver<Telemetry>,
         simulation_start: SystemTime,
     ) -> RealTimeVisualization {
         RealTimeVisualization {
@@ -58,9 +62,13 @@ impl RealTimeVisualization {
             kalman_data: VecDeque::from(
                 [Data::new(); (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get()) as usize],
             ),
+            inertial_data: VecDeque::from(
+                [Data::new(); (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get()) as usize],
+            ),
             rx_gps,
             rx_avg,
             rx_kalman,
+            rx_inertial,
             plot_start: SystemTime::now()
                 .duration_since(simulation_start)
                 .unwrap()
@@ -77,6 +85,7 @@ impl RealTimeVisualization {
         rx_gps: Receiver<Telemetry>,
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
+        rx_inertial: Receiver<Telemetry>,
         simulation_start: SystemTime,
     ) {
         let mut window: PistonWindow = WindowSettings::new("RustSFD", [450, 300])
@@ -87,12 +96,13 @@ impl RealTimeVisualization {
 
         window.set_max_fps(config::FPS as u64);
 
-        let mut real_time_visualization = RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, simulation_start);
+        let mut real_time_visualization = RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, simulation_start);
 
         while draw_piston_window(&mut window, |b: PistonBackend<'_, '_>| {
             real_time_visualization.get_plot_data(PlotDataType::Gps);
             real_time_visualization.get_plot_data(PlotDataType::Avg);
             real_time_visualization.get_plot_data(PlotDataType::Kalman);
+            real_time_visualization.get_plot_data(PlotDataType::Inertial);
             real_time_visualization.draw(b);
 
             Ok(())
@@ -106,6 +116,7 @@ impl RealTimeVisualization {
             PlotDataType::Gps => (&self.rx_gps, &mut self.gps_data),
             PlotDataType::Avg => (&self.rx_avg, &mut self.avg_data),
             PlotDataType::Kalman => (&self.rx_kalman, &mut self.kalman_data),
+            PlotDataType::Inertial => (&self.rx_inertial, &mut self.inertial_data),
         };
 
         while let Ok(data) = rx.try_recv() {
@@ -160,6 +171,7 @@ impl RealTimeVisualization {
         self.chart_data(&self.gps_data, "GPS real data", GREEN, &mut chart);
         self.chart_data(&self.avg_data, "Moving average filter", BLUE, &mut chart);
         self.chart_data(&self.kalman_data, "Kalman filter", RED, &mut chart);
+        self.chart_data(&self.inertial_data, "Inertial navigator", MAGENTA, &mut chart);
 
         chart
             .configure_series_labels()
