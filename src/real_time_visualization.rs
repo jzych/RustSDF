@@ -1,13 +1,13 @@
-use plotters_piston::{draw_piston_window, PistonBackend};
 use piston_window::{EventLoop, PistonWindow, WindowSettings};
 use plotters::coord::types::RangedCoordf64;
 use plotters::prelude::*;
+use plotters_piston::{draw_piston_window, PistonBackend};
 
 use crate::config;
 use crate::data::{Data, Telemetry};
 use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 enum PlotDataType {
     Gps,
@@ -22,6 +22,8 @@ pub struct RealTimeVisualization {
     rx_gps: Receiver<Telemetry>,
     rx_avg: Receiver<Telemetry>,
     rx_kalman: Receiver<Telemetry>,
+    plot_start: f64,
+    plot_stop: f64,
 }
 
 impl RealTimeVisualization {
@@ -32,17 +34,25 @@ impl RealTimeVisualization {
     ) -> RealTimeVisualization {
         RealTimeVisualization {
             gps_data: VecDeque::from(
-                [Data::new(); (config::FPS * config::GPS_FREQ.get()) as usize],
+                [Data::new(); (config::PLOT_RANGE_WINDOW * config::GPS_FREQ.get()) as usize],
             ),
             avg_data: VecDeque::from(
-                [Data::new(); (config::FPS * config::IMU_FREQ.get()) as usize],
+                [Data::new(); (config::PLOT_RANGE_WINDOW * config::GPS_FREQ.get()) as usize],
             ),
             kalman_data: VecDeque::from(
-                [Data::new(); (config::FPS * config::IMU_FREQ.get()) as usize],
+                [Data::new(); (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get()) as usize],
             ),
             rx_gps,
             rx_avg,
             rx_kalman,
+            plot_start: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as f64,
+            plot_stop: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as f64,
         }
     }
 
@@ -93,7 +103,7 @@ impl RealTimeVisualization {
         }
     }
 
-    fn draw(&self, b: PistonBackend<'_, '_>) {
+    fn draw(&mut self, b: PistonBackend<'_, '_>) {
         let root: DrawingArea<PistonBackend<'_, '_>, _> = b.into_drawing_area();
         let _ = root.fill(&WHITE);
 
@@ -105,24 +115,14 @@ impl RealTimeVisualization {
         let (_, _lower_1) = split_in_3[1].split_vertically(40);
         let (_, _lower_2) = split_in_3[2].split_vertically(40);
 
-        let plot_start = self.gps_data[0]
-            .timestamp
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as f64;
-
-        let plot_stop = self.gps_data[4]
-            .timestamp
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as f64;
+        self.update_plot_range();
 
         let mut chart = ChartBuilder::on(&root)
             .x_label_area_size(40)
             .y_label_area_size(50)
             .right_y_label_area_size(60)
             .margin_bottom(30)
-            .build_cartesian_2d(plot_start..plot_stop, -10f64..200f64)
+            .build_cartesian_2d(self.plot_start..self.plot_stop, -10f64..200f64)
             .unwrap();
 
         chart
@@ -142,6 +142,28 @@ impl RealTimeVisualization {
             .background_style(WHITE.mix(0.0))
             .draw()
             .unwrap();
+    }
+
+    fn update_plot_range(&mut self) {
+        self.plot_stop = match self.kalman_data.back() {
+            Some(data) => data
+                .timestamp
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as f64,
+            None => panic!("Trying to access empty buffer!"),
+        };
+
+        if (self.plot_stop - self.plot_start) > (config::PLOT_RANGE_WINDOW as f64) {
+            self.plot_start = self
+                .kalman_data
+                .front()
+                .unwrap()
+                .timestamp
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as f64;
+        }
     }
 
     fn chart_data(

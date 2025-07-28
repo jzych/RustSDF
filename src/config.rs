@@ -19,4 +19,5 @@ pub const KALMAN_ACC_SIGMA: f64 = 0.1;
 pub const KALMAN_GPS_SIGMA: f64 = 0.1;
 
 // Visualiziation parameters
-pub const FPS: u32 = 1;
+pub const FPS: u32 = 5;
+pub const PLOT_RANGE_WINDOW: u32 = 15;
