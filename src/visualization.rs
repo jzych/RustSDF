@@ -223,9 +223,9 @@ mod tests {
             timestamp: SystemTime::now(),
         };
 
-        assert!(select_xyz("x", data) == 234.5);
-        assert!(select_xyz("y", data) == 555.1);
-        assert!(select_xyz("z", data) == 33.3);
+        approx::assert_abs_diff_eq!(select_xyz("x", data), 234.5);
+        approx::assert_abs_diff_eq!(select_xyz("y", data), 555.1);
+        approx::assert_abs_diff_eq!(select_xyz("z", data), 33.3);
     }
 
     #[test]
@@ -238,7 +238,7 @@ mod tests {
             timestamp: SystemTime::now(),
         };
 
-        assert_eq!(select_xyz("dariajestsuper", data), 33.3);
+        approx::assert_abs_diff_eq!(select_xyz("dariajestsuper", data), 33.3);
     }
 
     #[test]
