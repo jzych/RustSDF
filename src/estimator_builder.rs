@@ -165,4 +165,14 @@ mod tests {
             .spawn();
         assert!(handle.join().is_ok());
     }
+    
+    #[test]
+    #[timeout(10000)]
+    fn given_inertial_nav_builder_expect_spawn_to_spawn_inertial_nav_thread() {
+        let (_, input_rx) = std::sync::mpsc::channel();
+        let handle = EstimatorBuilder::new_inertial_navigator()
+            .with_input_rx(input_rx)
+            .spawn();
+        assert!(handle.join().is_ok());
+    }
 }

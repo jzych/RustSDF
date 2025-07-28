@@ -341,6 +341,13 @@ mod tests {
     }
 
     #[test]
+    fn intertial_nav_startup_without_subscriber_fails() {
+        let mut communication_registry = CommunicationRegistry::new();
+        let result = start_inertial_navigator(&mut communication_registry);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn imu_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
@@ -400,6 +407,17 @@ mod tests {
 
         communication_registry.register_for_input(DataSource::Kalman, tx);
         let result = start_kalman(&mut communication_registry);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn inertial_nav_startup_with_subscriber_suceeds() {
+        let (tx, _) = mpsc::channel();
+        let mut communication_registry = CommunicationRegistry::new();
+
+        communication_registry.register_for_input(DataSource::InertialNavigator, tx);
+        let result = start_inertial_navigator(&mut communication_registry);
 
         assert!(result.is_ok());
     }
