@@ -185,7 +185,9 @@ fn register_dynamic_plot(
     Receiver<Telemetry>,
     Receiver<Telemetry>,
     Receiver<Telemetry>,
+    SystemTime,
 ) {
+    let simulation_start = SystemTime::now();
     let (tx_gps, rx_gps) = mpsc::channel();
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
@@ -194,14 +196,14 @@ fn register_dynamic_plot(
     communication_registry.register_for_input(DataSource::Average, tx_avg);
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
 
-    (rx_gps, rx_avg, rx_kalman)
+    (rx_gps, rx_avg, rx_kalman, simulation_start)
 }
 
 fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
-    let (dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman) =
+    let (dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman, simulation_start) =
         register_dynamic_plot(&mut communication_registry);
 
     let placeholder_consumer_handle =
@@ -227,7 +229,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    RealTimeVisualization::run(dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman);
+    RealTimeVisualization::run(dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman, simulation_start);
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
