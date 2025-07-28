@@ -13,11 +13,13 @@ impl Visualization {
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
         rx_gps: Receiver<Telemetry>,
+        rx_inertial: Receiver<Telemetry>,
         simulation_start: SystemTime,
     ) -> JoinHandle<()> {
         let mut avg_data = Vec::new();
         let mut kalman_data = Vec::new();
         let mut gps_data = Vec::new();
+        let mut inertial_data = Vec::new();
 
         let handle = thread::spawn(move || {
             for data in rx_gps {
@@ -52,7 +54,18 @@ impl Visualization {
                     }
                 }
             }
-            draw(avg_data, kalman_data, gps_data, simulation_start);
+
+            for data in rx_inertial {
+                match data {
+                    Telemetry::Position(d) => {
+                        inertial_data.push(d);
+                    }
+                    Telemetry::Acceleration(_) => {
+                        panic!("Inertial navigator should not return acceleration");
+                    }
+                }
+            }
+            draw(avg_data, kalman_data, gps_data, inertial_data, simulation_start);
             println!("Visualization removed");
         });
         handle
@@ -74,6 +87,7 @@ fn create_plot(
     avg_data: &[Data],
     kalman_data: &[Data],
     gps_data: &[Data],
+    inertial_data: &[Data],
     simulation_start: SystemTime,
 ) {
     let plot_start = gps_data[0]
@@ -94,7 +108,7 @@ fn create_plot(
         .y_label_area_size(60)
         .right_y_label_area_size(60)
         .margin_bottom(30)
-        .build_cartesian_2d(plot_start..plot_stop, 0f64..200f64)
+        .build_cartesian_2d(plot_start..plot_stop, -100f64..150f64)
         .unwrap();
 
     chart
@@ -156,6 +170,20 @@ fn create_plot(
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN));
 
     chart
+        .draw_series(LineSeries::new(
+            inertial_data.iter().map(|p| {
+                (
+                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    select_xyz(coord_to_plot, *p),
+                )
+            }),
+            &MAGENTA,
+        ))
+        .unwrap()
+        .label("Inertial navigator data")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], MAGENTA));
+
+    chart
         .configure_series_labels()
         .border_style(BLACK)
         .background_style(WHITE.mix(0.0))
@@ -167,6 +195,7 @@ fn draw(
     avg_data: Vec<Data>,
     kalman_data: Vec<Data>,
     gps_data: Vec<Data>,
+    inertial_data: Vec<Data>,
     simulation_start: SystemTime,
 ) {
     let root =
@@ -187,6 +216,7 @@ fn draw(
         &avg_data,
         &kalman_data,
         &gps_data,
+        &inertial_data,
         simulation_start,
     );
     create_plot(
@@ -195,6 +225,7 @@ fn draw(
         &avg_data,
         &kalman_data,
         &gps_data,
+        &inertial_data,
         simulation_start,
     );
     create_plot(
@@ -203,6 +234,7 @@ fn draw(
         &avg_data,
         &kalman_data,
         &gps_data,
+        &inertial_data,
         simulation_start,
     );
 }
@@ -248,8 +280,9 @@ mod tests {
         let avg_data = vec![Data::new()];
         let kalman_data = vec![Data::new()];
         let gps_data = vec![Data::new()];
+        let inertial_data = vec![Data::new()];
 
-        draw(avg_data, kalman_data, gps_data, simulation_time);
+        draw(avg_data, kalman_data, gps_data, inertial_data, simulation_time);
 
         let path = Path::new("output/plot_gps_avg_kalman.png");
         assert!(path.exists());

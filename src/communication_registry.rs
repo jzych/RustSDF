@@ -11,6 +11,7 @@ pub enum DataSource {
     Gps,
     Kalman,
     Average,
+    InertialNavigator,
     Visualization,
 }
 
@@ -61,6 +62,7 @@ mod tests {
         assert!(registry.get_registered_transmitters(DataSource::Gps).is_none());
         assert!(registry.get_registered_transmitters(DataSource::Kalman).is_none());
         assert!(registry.get_registered_transmitters(DataSource::Imu).is_none());
+        assert!(registry.get_registered_transmitters(DataSource::InertialNavigator).is_none());
     }
 
     #[test]
@@ -70,6 +72,7 @@ mod tests {
         assert!(registry.get_registered_transmitters(DataSource::Gps).is_none());
         assert!(registry.get_registered_transmitters(DataSource::Kalman).is_none());
         assert!(registry.get_registered_transmitters(DataSource::Imu).is_none());
+        assert!(registry.get_registered_transmitters(DataSource::InertialNavigator).is_none());
     }
 
     #[test]

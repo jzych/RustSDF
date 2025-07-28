@@ -3,17 +3,18 @@ use std::{
     thread::JoinHandle,
     sync::mpsc::{Receiver},
 };
-
 use crate::{
     average::Average,
     data::Telemetry,
     kalman::KalmanFilter,
+    inertial_navigator::InertialNavigator,
 };
 
 #[derive(PartialEq, Eq, Debug)]
 enum EstimatorType {
     Average,
     Kalman,
+    InertialNavigator,
 }
 
 pub struct EstimatorBuilder {
@@ -45,6 +46,13 @@ impl EstimatorBuilder {
         }
     }
 
+    pub fn new_inertial_navigator() -> Self {
+        Self {
+            estimator_type: EstimatorType::InertialNavigator,
+            ..Self::default()
+        }
+    }
+
     pub fn with_subscribers(self, subscribers: Vec<Sender<Telemetry>>) -> Self {
         Self {
             subscribers,
@@ -69,6 +77,10 @@ impl EstimatorBuilder {
                         input_rx,
                     ),
                     EstimatorType::Kalman => KalmanFilter::run(
+                        self.subscribers,
+                        input_rx,
+                    ),
+                    EstimatorType::InertialNavigator => InertialNavigator::run(
                         self.subscribers,
                         input_rx,
                     ),
