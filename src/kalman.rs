@@ -80,7 +80,6 @@ impl KalmanFilter {
 
         std::thread::spawn( move || {
             
-
             for telemetry in rx {
 
                 if telemetry_check(

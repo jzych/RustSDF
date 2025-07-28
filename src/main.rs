@@ -124,8 +124,11 @@ fn start_avg_filter(
 fn start_inertial_navigator(
     communication_registry: &mut CommunicationRegistry,
 ) -> Result<JoinHandle<()>, Error> {
-    let (tx, input_rx) = mpsc::channel();
-    communication_registry.register_for_input(DataSource::Imu, tx);
+    let (tx_imu, input_rx) = mpsc::channel();
+    let tx_gps = tx_imu.clone();
+    communication_registry.register_for_input(DataSource::Imu, tx_imu);
+    communication_registry.register_for_input(DataSource::Gps, tx_gps);
+
 
     match communication_registry.get_registered_transmitters(DataSource::InertialNavigator) {
         Some(subscribers) => Ok(
