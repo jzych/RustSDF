@@ -8,13 +8,26 @@ use crate::config;
 use crate::data::{Data, Telemetry};
 use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 enum PlotDataType {
     Gps,
     Avg,
     Kalman,
 }
+
+#[derive(Debug)]
+enum PlotAxis {
+    X,
+    Y,
+    Z,
+}
+
+impl std::fmt::Display for PlotAxis {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+      write!(f, "{:?}", self)
+    }
+  }
 
 pub struct RealTimeVisualization {
     gps_data: VecDeque<Data>,
@@ -51,11 +64,11 @@ impl RealTimeVisualization {
             plot_start: SystemTime::now()
                 .duration_since(simulation_start)
                 .unwrap()
-                .as_secs_f64(),
+                .as_millis() as f64,
             plot_stop: SystemTime::now()
                 .duration_since(simulation_start)
                 .unwrap()
-                .as_secs_f64(),
+                .as_millis() as f64,
             simulation_start,
         }
     }
@@ -122,25 +135,25 @@ impl RealTimeVisualization {
 
         self.update_plot_range();
 
-        self.draw_coordinate(lower_0, "x");
-        self.draw_coordinate(lower_1, "y");
-        self.draw_coordinate(lower_2, "z");
+        self.draw_coordinate(lower_0, PlotAxis::X);
+        self.draw_coordinate(lower_1, PlotAxis::Y);
+        self.draw_coordinate(lower_2, PlotAxis::Z);
     }
 
-    fn draw_coordinate(&mut self, root: DrawingArea<PistonBackend<'_, '_>, Shift>, coord: &str) {
+    fn draw_coordinate(&mut self, root: DrawingArea<PistonBackend<'_, '_>, Shift>, coord: PlotAxis) {
 
         let mut chart = ChartBuilder::on(&root)
             .x_label_area_size(40)
             .y_label_area_size(50)
             .right_y_label_area_size(60)
             .margin_bottom(30)
-            .build_cartesian_2d(self.plot_start..self.plot_stop, -10f64..200f64)
+            .build_cartesian_2d(self.plot_start..self.plot_stop, config::PLOT_RANGE_X_AXIS_MIN..config::PLOT_RANGE_X_AXIS_MAX)
             .unwrap();
 
         chart
             .configure_mesh()
             .x_desc("time")
-            .y_desc(coord)
+            .y_desc(coord.to_string())
             .draw()
             .unwrap();
 
@@ -162,7 +175,7 @@ impl RealTimeVisualization {
                 .timestamp
                 .duration_since(self.simulation_start)
                 .unwrap()
-                .as_secs_f64(),
+                .as_millis() as f64,
             None => panic!("Trying to access empty buffer!"),
         };
 
@@ -174,7 +187,7 @@ impl RealTimeVisualization {
                 .timestamp
                 .duration_since(self.simulation_start)
                 .unwrap()
-                .as_secs_f64();
+                .as_millis() as f64;
         }
     }
 
@@ -193,7 +206,7 @@ impl RealTimeVisualization {
             .draw_series(LineSeries::new(
                 data.iter().map(|p| {
                     (
-                        p.timestamp.duration_since(self.simulation_start).unwrap().as_secs_f64(),
+                        p.timestamp.duration_since(self.simulation_start).unwrap().as_millis() as f64,
                         p.x,
                     )
                 }),
