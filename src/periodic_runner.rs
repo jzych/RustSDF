@@ -33,6 +33,7 @@ pub fn run_periodicaly(
 mod tests {
     use assertables::*;
     use std::time::Duration;
+    use flaky_test::flaky_test;
 
     use super::*;
 
@@ -57,8 +58,12 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    // Given that we are running on general purpose OS, not RTOS
+    // we cannot expect that this test will pass on first try.
+    // Two tries should suffice, but on CI's VM higher number is necessary.
     #[test]
-    fn given_period_expect_runner_will_sleep_with_one_percent_precision() {
+    #[flaky_test]
+    fn given_period_expect_runner_will_sleep_with_given_time() {
         let mut counter = 0;
         let stop_after_a_cycle = || {
             counter += 1;
@@ -70,11 +75,16 @@ mod tests {
         let result = run_periodicaly(|| Ok(()), stop_after_a_cycle, arbitrary_running_period);
 
         assert!(result.is_ok());
-        let finish = start.elapsed();
-        let precision = 0.01; // 1% in difference
+        let running_time = start.elapsed();
+        let precision = 0.2;
+        let difference = arbitrary_running_period.as_secs_f64() * precision;
+        assert_lt!(
+            running_time.as_secs_f64(),
+            arbitrary_running_period.as_secs_f64() + difference
+        );
         assert_gt!(
-            finish.as_secs_f64() / arbitrary_running_period.as_secs_f64(),
-            precision
+            running_time.as_secs_f64(),
+            arbitrary_running_period.as_secs_f64()
         );
     }
 
@@ -85,13 +95,13 @@ mod tests {
             write!(f, "TestError")
         }
     }
-    impl std::error::Error for TestError{}
+    impl std::error::Error for TestError {}
 
     #[test]
     fn given_called_function_returns_error_expect_exiting_loop_with_error() {
         let never_stops = || false;
         let arbitrary_running_period = Duration::from_millis(10);
-        let returns_error = || -> Result<(), Box<dyn Error>> {Err(Box::new(TestError))};
+        let returns_error = || -> Result<(), Box<dyn Error>> { Err(Box::new(TestError)) };
 
         let result = run_periodicaly(returns_error, never_stops, arbitrary_running_period);
         assert!(result.is_err());
