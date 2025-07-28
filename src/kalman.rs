@@ -80,7 +80,6 @@ impl KalmanFilter {
 
         std::thread::spawn( move || {
             
-
             for telemetry in rx {
 
                 if telemetry_check(
@@ -207,7 +206,7 @@ fn telemetry_check(
     }
 }
 
-fn create_matrix_A(dt: f64) -> Matrix6<f64> {
+pub fn create_matrix_A(dt: f64) -> Matrix6<f64> {
     Matrix6::new(
     1.0, 0.0, 0.0, dt,  0.0, 0.0, 
     0.0, 1.0, 0.0, 0.0, dt,  0.0, 
@@ -218,7 +217,7 @@ fn create_matrix_A(dt: f64) -> Matrix6<f64> {
     )
 }
 
-fn create_matrix_B(dt: f64) -> Matrix6x3<f64> {
+pub fn create_matrix_B(dt: f64) -> Matrix6x3<f64> {
     Matrix6x3::new(
     dt*dt*0.5, 0.0, 0.0, 
     0.0, dt*dt*0.5, 0.0, 

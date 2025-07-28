@@ -3,17 +3,18 @@ use std::{
     thread::JoinHandle,
     sync::mpsc::{Receiver},
 };
-
 use crate::{
     average::Average,
     data::Telemetry,
     kalman::KalmanFilter,
+    inertial_navigator::InertialNavigator,
 };
 
 #[derive(PartialEq, Eq, Debug)]
 enum EstimatorType {
     Average,
     Kalman,
+    InertialNavigator,
 }
 
 pub struct EstimatorBuilder {
@@ -45,6 +46,13 @@ impl EstimatorBuilder {
         }
     }
 
+    pub fn new_inertial_navigator() -> Self {
+        Self {
+            estimator_type: EstimatorType::InertialNavigator,
+            ..Self::default()
+        }
+    }
+
     pub fn with_subscribers(self, subscribers: Vec<Sender<Telemetry>>) -> Self {
         Self {
             subscribers,
@@ -69,6 +77,10 @@ impl EstimatorBuilder {
                         input_rx,
                     ),
                     EstimatorType::Kalman => KalmanFilter::run(
+                        self.subscribers,
+                        input_rx,
+                    ),
+                    EstimatorType::InertialNavigator => InertialNavigator::run(
                         self.subscribers,
                         input_rx,
                     ),
@@ -149,6 +161,16 @@ mod tests {
     fn given_kalman_builder_expect_spawn_to_spawn_kalman_thread() {
         let (_, input_rx) = std::sync::mpsc::channel();
         let handle = EstimatorBuilder::new_kalman()
+            .with_input_rx(input_rx)
+            .spawn();
+        assert!(handle.join().is_ok());
+    }
+    
+    #[test]
+    #[timeout(10000)]
+    fn given_inertial_nav_builder_expect_spawn_to_spawn_inertial_nav_thread() {
+        let (_, input_rx) = std::sync::mpsc::channel();
+        let handle = EstimatorBuilder::new_inertial_navigator()
             .with_input_rx(input_rx)
             .spawn();
         assert!(handle.join().is_ok());

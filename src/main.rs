@@ -30,6 +30,7 @@ pub mod data;
 mod gps;
 mod imu;
 mod kalman;
+mod inertial_navigator;
 mod logger;
 mod real_time_visualization;
 mod sensor_builder;
@@ -120,15 +121,38 @@ fn start_avg_filter(
     }
 }
 
+fn start_inertial_navigator(
+    communication_registry: &mut CommunicationRegistry,
+) -> Result<JoinHandle<()>, Error> {
+    let (tx_imu, input_rx) = mpsc::channel();
+    let tx_gps = tx_imu.clone();
+    communication_registry.register_for_input(DataSource::Imu, tx_imu);
+    communication_registry.register_for_input(DataSource::Gps, tx_gps);
+
+
+    match communication_registry.get_registered_transmitters(DataSource::InertialNavigator) {
+        Some(subscribers) => Ok(
+            EstimatorBuilder::new_inertial_navigator().
+            with_subscribers(subscribers).
+            with_input_rx(input_rx).
+            spawn()),
+        None => Err(Error::StartupError(
+            "No subscribers for Average filter. Start aborted.",
+        )),
+    }
+}
+
 fn start_visualization(communication_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
     let (tx_gps, rx_gps) = mpsc::channel();
+    let (tx_inertial, rx_inertial) = mpsc::channel();
     communication_registry.register_for_input(DataSource::Average, tx_avg);
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
+    communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
 
-    Visualization::run(rx_avg, rx_kalman, rx_gps, SystemTime::now())
+    Visualization::run(rx_avg, rx_kalman, rx_gps, rx_inertial, SystemTime::now())
 }
 
 fn create_data_consumer(
@@ -185,35 +209,48 @@ fn register_dynamic_plot(
     Receiver<Telemetry>,
     Receiver<Telemetry>,
     Receiver<Telemetry>,
+    Receiver<Telemetry>,
     SystemTime,
 ) {
     let simulation_start = SystemTime::now();
     let (tx_gps, rx_gps) = mpsc::channel();
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
+    let (tx_inertial, rx_inertial) = mpsc::channel();
 
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
     communication_registry.register_for_input(DataSource::Average, tx_avg);
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
+    communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
 
-    (rx_gps, rx_avg, rx_kalman, simulation_start)
+    (rx_gps, rx_avg, rx_kalman, rx_inertial, simulation_start)
 }
 
 fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
 
-    let (dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman, simulation_start) =
+    let (
+        dynamic_rx_gps,
+        dynamic_rx_avg,
+        dynamic_rx_kalman,
+        dynamic_rx_inertial,
+        simulation_start) =
         register_dynamic_plot(&mut communication_registry);
 
-    let placeholder_consumer_handle =
+    let kalman_consumer_handle =
         create_data_consumer(DataSource::Kalman, &mut communication_registry);
-    let consumer3_handle = create_data_consumer(DataSource::Average, &mut communication_registry);
+    let average_consumer_handle = 
+        create_data_consumer(DataSource::Average, &mut communication_registry);
+    let inertial_consumer_handle = 
+        create_data_consumer(DataSource::InertialNavigator, &mut communication_registry);
 
     let visu_handle = start_visualization(&mut communication_registry);
-    let kalman_handle = start_kalman(&mut communication_registry)?;
 
+    let kalman_handle = start_kalman(&mut communication_registry)?;
     let avg_handle = start_avg_filter(&mut communication_registry)?;
+    let inertial_navigator_handle = start_inertial_navigator(&mut communication_registry)?;
+    
     let (generated_data_handle, generator_handle) = TrajectoryGeneratorBuilder::new()
         .with_frequency(GENERATOR_FREQ)
         .with_angled_helical_mode()
@@ -229,7 +266,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    RealTimeVisualization::run(dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman, simulation_start);
+    RealTimeVisualization::run(dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman, dynamic_rx_inertial, simulation_start);
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
@@ -237,8 +274,10 @@ fn main() -> Result<(), Error> {
     gps_handle.join().unwrap();
     kalman_handle.join().unwrap();
     avg_handle.join().unwrap();
-    placeholder_consumer_handle.join().unwrap();
-    consumer3_handle.join().unwrap();
+    inertial_navigator_handle.join().unwrap();
+    kalman_consumer_handle.join().unwrap();
+    average_consumer_handle.join().unwrap();
+    inertial_consumer_handle.join().unwrap();
     visu_handle.join().unwrap();
 
     let consumers = get_data::<DataSource>("Consumers");
@@ -313,6 +352,13 @@ mod tests {
     }
 
     #[test]
+    fn intertial_nav_startup_without_subscriber_fails() {
+        let mut communication_registry = CommunicationRegistry::new();
+        let result = start_inertial_navigator(&mut communication_registry);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn imu_startup_with_subscriber_suceeds() {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
@@ -372,6 +418,17 @@ mod tests {
 
         communication_registry.register_for_input(DataSource::Kalman, tx);
         let result = start_kalman(&mut communication_registry);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn inertial_nav_startup_with_subscriber_suceeds() {
+        let (tx, _) = mpsc::channel();
+        let mut communication_registry = CommunicationRegistry::new();
+
+        communication_registry.register_for_input(DataSource::InertialNavigator, tx);
+        let result = start_inertial_navigator(&mut communication_registry);
 
         assert!(result.is_ok());
     }
