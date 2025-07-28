@@ -1,10 +1,9 @@
+use crate::data::{Data, Telemetry};
 use plotters::coord::Shift;
 use plotters::prelude::*;
+use std::thread;
 use std::time::SystemTime;
 use std::{sync::mpsc::Receiver, thread::JoinHandle};
-use std::thread;
-
-use crate::data::{Data, Telemetry};
 
 #[allow(unused)]
 pub struct Visualization;
@@ -109,7 +108,10 @@ fn create_plot(
         .draw_series(LineSeries::new(
             kalman_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -123,7 +125,10 @@ fn create_plot(
         .draw_series(LineSeries::new(
             avg_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -137,7 +142,10 @@ fn create_plot(
         .draw_series(LineSeries::new(
             gps_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
@@ -155,8 +163,14 @@ fn create_plot(
         .unwrap()
 }
 
-fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>, simulation_start: SystemTime) {
-    let root = BitMapBackend::new("output/plot_gps_avg_kalman.png", (2000, 1000)).into_drawing_area();
+fn draw(
+    avg_data: Vec<Data>,
+    kalman_data: Vec<Data>,
+    gps_data: Vec<Data>,
+    simulation_start: SystemTime,
+) {
+    let root =
+        BitMapBackend::new("output/plot_gps_avg_kalman.png", (2000, 1000)).into_drawing_area();
     root.fill(&WHITE).unwrap();
 
     let (upper, lower) = root.split_vertically(40);
@@ -167,9 +181,30 @@ fn draw(avg_data: Vec<Data>, kalman_data: Vec<Data>, gps_data: Vec<Data>, simula
     let (_, lower_1) = split_in_3[1].split_vertically(40);
     let (_, lower_2) = split_in_3[2].split_vertically(40);
 
-    create_plot(lower_0, "x", &avg_data, &kalman_data, &gps_data, simulation_start);
-    create_plot(lower_1, "y", &avg_data, &kalman_data, &gps_data, simulation_start);
-    create_plot(lower_2, "z", &avg_data, &kalman_data, &gps_data, simulation_start);
+    create_plot(
+        lower_0,
+        "x",
+        &avg_data,
+        &kalman_data,
+        &gps_data,
+        simulation_start,
+    );
+    create_plot(
+        lower_1,
+        "y",
+        &avg_data,
+        &kalman_data,
+        &gps_data,
+        simulation_start,
+    );
+    create_plot(
+        lower_2,
+        "z",
+        &avg_data,
+        &kalman_data,
+        &gps_data,
+        simulation_start,
+    );
 }
 
 #[cfg(test)]
@@ -177,6 +212,7 @@ mod tests {
     use super::*;
 
     use std::time::SystemTime;
+    use std::path::Path;
 
     #[test]
     fn test_select_xyz() {
@@ -203,5 +239,19 @@ mod tests {
         };
 
         assert_eq!(select_xyz("dariajestsuper", data), 33.3);
+    }
+
+    #[test]
+    fn test_plot_file_generated() {
+        let simulation_time = SystemTime::now();
+
+        let avg_data = vec![Data::new()];
+        let kalman_data = vec![Data::new()];
+        let gps_data = vec![Data::new()];
+
+        draw(avg_data, kalman_data, gps_data, simulation_time);
+
+        let path = Path::new("output/plot_gps_avg_kalman.png");
+        assert!(path.exists());
     }
 }
