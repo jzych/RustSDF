@@ -1,5 +1,5 @@
 use piston_window::{EventLoop, PistonWindow, WindowSettings};
-use plotters::coord::types::RangedCoordf64;
+use plotters::coord::types::{RangedCoordf64, RangedCoordi128};
 use plotters::coord::Shift;
 use plotters::prelude::*;
 use plotters_piston::{draw_piston_window, PistonBackend};
@@ -36,8 +36,8 @@ pub struct RealTimeVisualization {
     rx_gps: Receiver<Telemetry>,
     rx_avg: Receiver<Telemetry>,
     rx_kalman: Receiver<Telemetry>,
-    plot_start: f64,
-    plot_stop: f64,
+    plot_start: i128,
+    plot_stop: i128,
     simulation_start: SystemTime,
 }
 
@@ -64,11 +64,11 @@ impl RealTimeVisualization {
             plot_start: SystemTime::now()
                 .duration_since(simulation_start)
                 .unwrap()
-                .as_millis() as f64,
+                .as_millis() as i128,
             plot_stop: SystemTime::now()
                 .duration_since(simulation_start)
                 .unwrap()
-                .as_millis() as f64,
+                .as_millis() as i128,
             simulation_start,
         }
     }
@@ -175,11 +175,11 @@ impl RealTimeVisualization {
                 .timestamp
                 .duration_since(self.simulation_start)
                 .unwrap()
-                .as_millis() as f64,
+                .as_millis() as i128,
             None => panic!("Trying to access empty buffer!"),
         };
 
-        if (self.plot_stop - self.plot_start) > (config::PLOT_RANGE_WINDOW as f64) {
+        if (self.plot_stop - self.plot_start) > (config::PLOT_RANGE_WINDOW as i128) {
             self.plot_start = self
                 .kalman_data
                 .front()
@@ -187,7 +187,7 @@ impl RealTimeVisualization {
                 .timestamp
                 .duration_since(self.simulation_start)
                 .unwrap()
-                .as_millis() as f64;
+                .as_millis() as i128;
         }
     }
 
@@ -199,14 +199,14 @@ impl RealTimeVisualization {
         chart: &mut ChartContext<
             '_,
             PistonBackend<'_, '_>,
-            Cartesian2d<RangedCoordf64, RangedCoordf64>,
+            Cartesian2d<RangedCoordi128, RangedCoordf64>,
         >,
     ) {
         chart
             .draw_series(LineSeries::new(
                 data.iter().map(|p| {
                     (
-                        p.timestamp.duration_since(self.simulation_start).unwrap().as_millis() as f64,
+                        p.timestamp.duration_since(self.simulation_start).unwrap().as_millis() as i128,
                         p.x,
                     )
                 }),
