@@ -7,6 +7,7 @@ name = "RustSDF"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "assertables",
  "chrono",
  "nalgebra",
  "noise",
@@ -132,6 +133,12 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
+name = "assertables"
+version = "9.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0118bf39618c9958c058d23c1453fdfc40c99688d9a0dfdc441244421ef89407"
 
 [[package]]
 name = "autocfg"
