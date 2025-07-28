@@ -123,6 +123,7 @@ fn telemetry_check(
                 );
                 false
             } else {
+                *gps_samples_received = 3;
                 false
             }
         }
