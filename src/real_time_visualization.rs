@@ -25,7 +25,7 @@ enum PlotAxis {
 
 impl std::fmt::Display for PlotAxis {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-      write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
   }
 
