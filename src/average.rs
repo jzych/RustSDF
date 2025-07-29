@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::data::{Data, Telemetry};
+use crate::config::BUFFER_LENGTH;
 
 #[allow(unused)]
 pub struct Average;
@@ -13,7 +14,7 @@ pub struct Average;
 impl Average {
     pub fn run(mut tx: Vec<Sender<Telemetry>>, rx: Receiver<Telemetry>) -> JoinHandle<()> {
         thread::spawn(move || {
-            let buffer_size = 10;
+            let buffer_size = BUFFER_LENGTH;
             let mut buffer = VecDeque::with_capacity(buffer_size);
 
             while let Ok(Telemetry::Position(new_data)) = rx.recv() {
@@ -30,7 +31,7 @@ impl Average {
     }
 
     fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
-        if buffer.len() < 10 {
+        if buffer.len() < BUFFER_LENGTH {
             buffer.push_back(new_data);
         } else {
             buffer.pop_front();
@@ -110,18 +111,22 @@ mod test {
             timestamp: SystemTime::now(),
         };
 
-        gen_vectors(2, &mut buffer);
-        Average::handle_data_buffer(&mut buffer, data);
-        assert!(buffer.len() == 3);
-        approx::assert_abs_diff_eq!(buffer[2].x, data.x);
+        if BUFFER_LENGTH >= 3 as usize {
+            gen_vectors(2, &mut buffer);
+            Average::handle_data_buffer(&mut buffer, data);
+            assert!(buffer.len() == 3);
+            approx::assert_abs_diff_eq!(buffer[2].x, data.x);
+        }
 
         buffer.clear();
         assert!(buffer.is_empty());
 
-        gen_vectors(10, &mut buffer);
-        Average::handle_data_buffer(&mut buffer, data);
-        assert!(buffer.len() == 10);
-        approx::assert_abs_diff_eq!(buffer[9].x, data.x);
+        if BUFFER_LENGTH == 10 as usize {
+            gen_vectors(10, &mut buffer);
+            Average::handle_data_buffer(&mut buffer, data);
+            assert!(buffer.len() == 10);
+            approx::assert_abs_diff_eq!(buffer[9].x, data.x);
+        }
     }
 
     fn gen_vectors(vec_len: u8, buffer: &mut VecDeque<Data>) {

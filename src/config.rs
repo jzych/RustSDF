@@ -10,16 +10,19 @@ pub const GPS_FREQ: NonZeroU32 = NonZeroU32::new(5).unwrap();
 pub const HELIX_FREQUENCY: f64 = 0.5;
 
 // Sensor output noise parameters
-pub const GPS_OUTPUT_NOISE_SIGMA: f64 = 1.0;
+pub const GPS_OUTPUT_NOISE_SIGMA: f64 = 10.0;
 pub const IMU_OUTPUT_NOISE_SIGMA: f64 = 1.0;
 
 // Kalman tuning parameters
+pub const KALMAN_GPS_SIGMA: f64 = 10.0;
+pub const KALMAN_ACC_SIGMA: f64 = 1.0;
 pub const KALMAN_TIMING_TOLERANCE: f64 = 0.02; // 0.01 = 1% of timing tolerance
-pub const KALMAN_ACC_SIGMA: f64 = 0.1;
-pub const KALMAN_GPS_SIGMA: f64 = 0.1;
 
 // Visualiziation parameters
 pub const FPS: u32 = 5;
 pub const PLOT_RANGE_WINDOW: u32 = 15;
 pub const PLOT_RANGE_Y_AXIS_MIN: f64 = -20.0;
 pub const PLOT_RANGE_Y_AXIS_MAX: f64 = 120.0;
+
+// Average filter tuning parameters
+pub const BUFFER_LENGTH: usize = 3;
