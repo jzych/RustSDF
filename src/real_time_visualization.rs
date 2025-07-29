@@ -192,7 +192,6 @@ impl RealTimeVisualization {
             .draw()
             .unwrap();
 
-        // self.chart_data(&self.gps_data, "GPS real data", GREEN, &mut chart);
         self.chart_data(
             &self.groundtruth_data,
             "Groundtruth",
@@ -200,6 +199,14 @@ impl RealTimeVisualization {
             &mut chart,
             coord,
         );
+        self.chart_data(
+            &self.gps_data,
+            "GPS data",
+            RGBColor(150,150,150),
+            &mut chart,
+            coord
+        );
+        
         self.chart_data(
             &self.avg_data,
             "Moving average filter",
@@ -210,11 +217,17 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.inertial_data,
             "Inertial navigator",
-            MAGENTA,
+            RGBColor(0,225,0),
             &mut chart,
             coord,
         );
-        self.chart_data(&self.kalman_data, "Kalman filter", RED, &mut chart, coord);
+        self.chart_data(
+            &self.kalman_data,
+            "Kalman filter",
+            RED,
+            &mut chart,
+            coord
+        );
 
         chart
             .configure_series_labels()
