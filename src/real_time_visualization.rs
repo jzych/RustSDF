@@ -29,7 +29,7 @@ impl std::fmt::Display for PlotAxis {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
-  }
+}
 
 pub struct RealTimeVisualization {
     gps_data: VecDeque<Data>,
@@ -105,7 +105,14 @@ impl RealTimeVisualization {
 
         window.set_max_fps(config::FPS as u64);
 
-        let mut real_time_visualization = RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start);
+        let mut real_time_visualization = RealTimeVisualization::new(
+            rx_gps,
+            rx_avg,
+            rx_kalman,
+            rx_inertial,
+            rx_groundtruth,
+            simulation_start,
+        );
 
         while draw_piston_window(&mut window, |b: PistonBackend<'_, '_>| {
             real_time_visualization.get_plot_data(PlotDataType::Gps);
@@ -162,14 +169,20 @@ impl RealTimeVisualization {
         self.draw_coordinate(lower_2, PlotAxis::Z);
     }
 
-    fn draw_coordinate(&mut self, root: DrawingArea<PistonBackend<'_, '_>, Shift>, coord: PlotAxis) {
-
+    fn draw_coordinate(
+        &mut self,
+        root: DrawingArea<PistonBackend<'_, '_>, Shift>,
+        coord: PlotAxis,
+    ) {
         let mut chart = ChartBuilder::on(&root)
             .x_label_area_size(40)
             .y_label_area_size(50)
             .right_y_label_area_size(60)
             .margin_bottom(30)
-            .build_cartesian_2d(self.plot_start..self.plot_stop, config::PLOT_RANGE_X_AXIS_MIN..config::PLOT_RANGE_X_AXIS_MAX)
+            .build_cartesian_2d(
+                self.plot_start..self.plot_stop,
+                config::PLOT_RANGE_Y_AXIS_MIN..config::PLOT_RANGE_Y_AXIS_MAX,
+            )
             .unwrap();
 
         chart
@@ -180,10 +193,28 @@ impl RealTimeVisualization {
             .unwrap();
 
         // self.chart_data(&self.gps_data, "GPS real data", GREEN, &mut chart);
-        self.chart_data(&self.avg_data, "Moving average filter", BLUE, &mut chart, coord);
+        self.chart_data(
+            &self.groundtruth_data,
+            "Groundtruth",
+            BLACK,
+            &mut chart,
+            coord,
+        );
+        self.chart_data(
+            &self.avg_data,
+            "Moving average filter",
+            BLUE,
+            &mut chart,
+            coord,
+        );
+        self.chart_data(
+            &self.inertial_data,
+            "Inertial navigator",
+            MAGENTA,
+            &mut chart,
+            coord,
+        );
         self.chart_data(&self.kalman_data, "Kalman filter", RED, &mut chart, coord);
-        self.chart_data(&self.inertial_data, "Inertial navigator", MAGENTA, &mut chart, coord);
-        self.chart_data(&self.groundtruth_data, "Groundtruth", BLACK, &mut chart, coord);
 
         chart
             .configure_series_labels()
@@ -231,11 +262,15 @@ impl RealTimeVisualization {
             .draw_series(LineSeries::new(
                 data.iter().map(|p| {
                     (
-                        p.timestamp.duration_since(self.simulation_start).unwrap().as_millis() as i128,
+                        p.timestamp
+                            .duration_since(self.simulation_start)
+                            .unwrap()
+                            .as_millis() as i128,
                         match coord {
                             PlotAxis::X => p.x,
                             PlotAxis::Y => p.y,
-                            PlotAxis::Z => p.z,                        }
+                            PlotAxis::Z => p.z,
+                        },
                     )
                 }),
                 color,
