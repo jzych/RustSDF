@@ -9,12 +9,11 @@ use nalgebra::{Matrix3x1, Matrix6, Matrix6x1, Matrix6x3};
 use crate::{
     config::IMU_FREQ,
     data::{Data, Telemetry},
+    log_config::{INTERTIAL_NAVIGATOR_LOG, GENERAL_LOG},
     logger::log,
     utils::*,
     kalman::{create_matrix_A, create_matrix_B},
 };
-
-const LOGGER_PREFIX: &str = "INERIAL NAVIGATOR";
 
 pub struct InertialNavigator {
     tx: Vec<Sender<Telemetry>>,
@@ -78,10 +77,10 @@ impl InertialNavigator {
                     if inertial_navigator.tx.is_empty() {
                         break;
                     }
-                    log(LOGGER_PREFIX, inertial_navigator_position_estimate);
+                    log(INTERTIAL_NAVIGATOR_LOG, inertial_navigator_position_estimate);
                 }
             }
-            println!("Inertial navigator removed");
+            log(GENERAL_LOG, "Inertial navigator removed".to_string());
         })
     }   
 }
@@ -110,17 +109,17 @@ fn telemetry_check(
                 state[3] = (data.x - prev_gps_data.x)/delta_time;
                 state[4] = (data.y - prev_gps_data.y)/delta_time;
                 state[5] = (data.z - prev_gps_data.z)/delta_time;
-                println!("Inertial Navigator: Initial position from GPS data: {}, {}, {}",
+                log(GENERAL_LOG, format!("Inertial Navigator: Initial position from GPS data: {}, {}, {}",
                     state[0],
                     state[1],
                     state[2]
-                );
-                println!("Inertial Navigator: Initial velocity from GPS data: {}, {}, {}, dt = {}",
+                ));
+                log(GENERAL_LOG, format!("Inertial Navigator: Initial velocity from GPS data: {}, {}, {}, dt = {}",
                     state[3],
                     state[4],
                     state[5],
                     delta_time,
-                );
+                ));
                 false
             } else {
                 *gps_samples_received = 3;

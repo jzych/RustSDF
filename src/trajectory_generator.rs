@@ -1,4 +1,6 @@
 use crate::data::Data;
+use crate::log_config::{GROUNDTRUTH_LOG, GENERAL_LOG};
+use crate::logger::log;
 use noise::{NoiseFn, Perlin};
 use rand::Rng;
 use std::{
@@ -72,8 +74,7 @@ impl TrajectoryGenerator {
         let x = upscale(perlin.get([secs, 0.0, 0.0]));
         let y = upscale(perlin.get([0.0, secs, 0.0]));
         let z = upscale(perlin.get([0.0, 0.0, secs]));
-
-        println!("Data: {x},\t {y},\t {z}");
+        
         Data {
             x,
             y,
@@ -90,7 +91,6 @@ impl TrajectoryGenerator {
         let y = upscale(perlin.get([0.0, self.step, 0.0]));
         let z = upscale(perlin.get([0.0, 0.0, self.step]));
 
-        println!("Data: {x},\t {y},\t {z}");
         Data {
             x,
             y,
@@ -207,6 +207,7 @@ impl TrajectoryGeneratorBuilder {
         let generator_handle = std::thread::spawn(move || {
             while !generator.shutdown_trigger.load(Ordering::SeqCst) {
                 let data = generator.generate_data();
+                log(GROUNDTRUTH_LOG, data);
                 {
                     *generator.data_handle.lock().unwrap() = data;
                 }
@@ -218,7 +219,7 @@ impl TrajectoryGeneratorBuilder {
 
                 std::thread::sleep(get_cycle_duration(frequency));
             }
-            println!("Trajectory generator removed");
+            log(GENERAL_LOG, "Trajectory generator removed".to_string());
         });
 
         (Arc::clone(&data_handle), generator_handle)

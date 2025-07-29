@@ -10,10 +10,9 @@ use crate::{
     config::{IMU_FREQ, KALMAN_ACC_SIGMA, KALMAN_GPS_SIGMA, KALMAN_TIMING_TOLERANCE},
     data::{Data, Telemetry},
     logger::log,
+    log_config::{GENERAL_LOG, KALMAN_LOG},
     utils::*,
 };
-
-const LOGGER_PREFIX: &str = "KALMAN";
 
 #[derive(Debug, Copy, Clone)]
 pub struct KalmanData {
@@ -127,10 +126,10 @@ impl KalmanFilter {
                     if kalman.tx.is_empty() {
                         break;
                     }
-                    log(LOGGER_PREFIX, kalman_position_estimate);
+                    log(KALMAN_LOG, kalman_position_estimate);
                 }
             }
-            println!("Kalman filter removed");
+            log(GENERAL_LOG, "Kalman filter removed".to_string());
         })
     }   
 }
@@ -187,17 +186,17 @@ fn telemetry_check(
                 state.x[3] = (data.x - prev_gps_data.x)/delta_time;
                 state.x[4] = (data.y - prev_gps_data.y)/delta_time;
                 state.x[5] = (data.z - prev_gps_data.z)/delta_time;
-                println!("Kalman: Initial position from GPS data: {}, {}, {}",
+                log(GENERAL_LOG, format!("Kalman: Initial position from GPS data: {}, {}, {}",
                     state.x[0],
                     state.x[1],
                     state.x[2]
-                );
-                println!("Kalman: Initial velocity from GPS data: {}, {}, {}, dt = {}",
+                ));
+                log(GENERAL_LOG, format!("Kalman: Initial velocity from GPS data: {}, {}, {}, dt = {}",
                     state.x[3],
                     state.x[4],
                     state.x[5],
                     delta_time,
-                );
+                ));
                 false
             } else {
                 *imu_samples_received > imu_samples_to_skip

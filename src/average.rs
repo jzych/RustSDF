@@ -6,6 +6,8 @@ use std::{
 };
 
 use crate::data::{Data, Telemetry};
+use crate::log_config::{GENERAL_LOG, MOVING_AVERAGE_LOG};
+use crate::logger::log;
 
 #[allow(unused)]
 pub struct Average;
@@ -22,13 +24,14 @@ impl Average {
             while let Ok(Telemetry::Position(new_data)) = rx.recv() {
                 Self::handle_data_buffer(&mut buffer, new_data, buffer_length);
                 let avg_data = Self::calculate_average(&buffer);
+                log(MOVING_AVERAGE_LOG, avg_data);
                 tx.retain(|tx| tx.send(Telemetry::Position(avg_data)).is_ok());
 
                 if tx.is_empty() {
                     break;
                 }
             }
-            println!("Average filter removed");
+            log(GENERAL_LOG, "Average filter removed".to_string());
         })
     }
 

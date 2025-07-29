@@ -2,6 +2,7 @@ use crate::{
     data::{Data, Telemetry},
     imu::error::NoSubscribers,
     logger::log,
+    log_config::{IMU_LOG, GENERAL_LOG},
     periodic_runner,
     utils::get_cycle_duration,
 };
@@ -22,8 +23,6 @@ pub mod error;
 
 use rand::rng;
 use rand_distr::{Distribution, Normal};
-
-const LOGGER_PREFIX: &str = "IMU";
 
 pub struct Imu {
     tx: Vec<Sender<Telemetry>>,
@@ -60,7 +59,7 @@ impl Imu {
                         eprintln!("Imu internal error: {e}. Aborting.")
                     }
 
-                    println!("Imu removed");
+                    log(GENERAL_LOG, "Imu removed".to_string());
                 }
                 Err(e) => {
                     eprintln!("Imu internal error during initialization: {e}. Aborting.");
@@ -122,7 +121,7 @@ impl Imu {
             timestamp: current_position.timestamp,
         };
 
-        log(LOGGER_PREFIX, data_to_send);
+        log(IMU_LOG, data_to_send);
         self.send_data(data_to_send)?;
         Ok(())
     }

@@ -3,7 +3,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
     },
-    thread::{self, JoinHandle},
+    thread::JoinHandle,
     time::SystemTime,
 };
 
@@ -12,24 +12,26 @@ use crate::{
     config::*,
     data::{Data, Telemetry},
     estimator_builder::EstimatorBuilder,
-    logger::{get_data, log},
     real_time_visualization::{PlotterReceivers, RealTimeVisualization},
+    logger::log,
+    log_config::*,
     sensor_builder::SensorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
     visualization::Visualization,
+    csv_handler::*,
 };
-
-use chrono::{DateTime, Local};
 
 mod average;
 mod communication_registry;
 mod config;
+mod csv_handler;
 pub mod data;
 mod estimator_builder;
 mod gps;
 mod imu;
 mod inertial_navigator;
 mod kalman;
+mod log_config;
 mod logger;
 mod real_time_visualization;
 mod sensor_builder;
@@ -176,50 +178,6 @@ fn start_trajectory_generator(
         .spawn(Arc::clone(&shutdown_trigger))
 }
 
-fn create_data_consumer(
-    source: DataSource,
-    consumer_registry: &mut CommunicationRegistry,
-) -> JoinHandle<()> {
-    let (tx, input_rx) = mpsc::channel();
-    consumer_registry.register_for_input(source, tx);
-
-    log("Consumers", source);
-
-    let consumer_start_time: SystemTime = SystemTime::now();
-    let handle = thread::spawn(move || {
-        for data in input_rx {
-            match data {
-                Telemetry::Acceleration(d) => {
-                    let elapsed = consumer_start_time.elapsed().unwrap();
-                    println!(
-                        "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
-                        source,
-                        d.x,
-                        d.y,
-                        d.z,
-                        elapsed.as_secs(),
-                        elapsed.subsec_millis()
-                    )
-                }
-                Telemetry::Position(d) => {
-                    let elapsed = consumer_start_time.elapsed().unwrap();
-                    println!(
-                        "Consuming from: {:?}: received: {}, {}, {}, at {}:{:03}",
-                        source,
-                        d.x,
-                        d.y,
-                        d.z,
-                        elapsed.as_secs(),
-                        elapsed.subsec_millis()
-                    )
-                }
-            }
-        }
-        println!("Channel has been closed, exiting the thread.");
-    });
-    handle
-}
-
 fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
     shutdown_trigger.store(true, Ordering::SeqCst);
 }
@@ -253,6 +211,7 @@ fn register_dynamic_plot(
 }
 
 fn main() -> Result<(), Error> {
+    log(GENERAL_LOG, "System start".to_string());
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
     let (receivers, simulation_start) = register_dynamic_plot(&mut communication_registry);
@@ -260,12 +219,6 @@ fn main() -> Result<(), Error> {
 
     let (generated_data_handle, generator_handle) =
         start_trajectory_generator(&mut communication_registry, Arc::clone(&shutdown_trigger));
-    let kalman_consumer_handle =
-        create_data_consumer(DataSource::Kalman, &mut communication_registry);
-    let average_consumer_handle =
-        create_data_consumer(DataSource::Average, &mut communication_registry);
-    let inertial_consumer_handle =
-        create_data_consumer(DataSource::InertialNavigator, &mut communication_registry);
 
     let kalman_handle = start_kalman(&mut communication_registry)?;
     let avg_handle = start_avg_filter(&mut communication_registry)?;
@@ -291,25 +244,9 @@ fn main() -> Result<(), Error> {
     kalman_handle.join().unwrap();
     avg_handle.join().unwrap();
     inertial_navigator_handle.join().unwrap();
-    kalman_consumer_handle.join().unwrap();
-    average_consumer_handle.join().unwrap();
-    inertial_consumer_handle.join().unwrap();
     visu_handle.join().unwrap();
 
-    let consumers = get_data::<DataSource>("Consumers");
-
-    if let Some(data) = consumers {
-        for entry in data {
-            let date_time: DateTime<Local> = entry.timestamp.into();
-            println!(
-                "Consumer created at: {}, who: {:?}",
-                date_time.format("%Y-%m-%d %H:%M:%S"),
-                entry.data
-            );
-        }
-    } else {
-        println!("No consumers created.");
-    }
+    save_logs_to_file();
 
     Ok(())
 }
@@ -318,6 +255,7 @@ fn main() -> Result<(), Error> {
 mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
+    use std::thread;
 
     use super::*;
 

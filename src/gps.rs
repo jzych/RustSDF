@@ -1,7 +1,10 @@
 use crate::{
     data::{Data, Telemetry},
     utils::get_cycle_duration,
+    logger::log,
+    log_config::GPS_LOG,
 };
+
 use rand_distr::{Normal, Distribution};
 use rand::rng;
 use std::{
@@ -35,6 +38,8 @@ impl Gps {
                 current_position.x += gaussian_noise.sample(&mut rng());
                 current_position.y += gaussian_noise.sample(&mut rng());
                 current_position.z += gaussian_noise.sample(&mut rng());
+        
+                log(GPS_LOG, current_position);
 
                 tx.retain(|tx| tx.send(Telemetry::Position(current_position)).is_ok());
                 if tx.is_empty() {
