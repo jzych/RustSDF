@@ -15,9 +15,10 @@ enum PlotDataType {
     Avg,
     Kalman,
     Inertial,
+    Groundtruth,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum PlotAxis {
     X,
     Y,
@@ -35,10 +36,12 @@ pub struct RealTimeVisualization {
     avg_data: VecDeque<Data>,
     kalman_data: VecDeque<Data>,
     inertial_data: VecDeque<Data>,
+    groundtruth_data: VecDeque<Data>,
     rx_gps: Receiver<Telemetry>,
     rx_avg: Receiver<Telemetry>,
     rx_kalman: Receiver<Telemetry>,
     rx_inertial: Receiver<Telemetry>,
+    rx_groundtruth: Receiver<Telemetry>,
     plot_start: i128,
     plot_stop: i128,
     simulation_start: SystemTime,
@@ -50,6 +53,7 @@ impl RealTimeVisualization {
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
         rx_inertial: Receiver<Telemetry>,
+        rx_groundtruth: Receiver<Telemetry>,
         simulation_start: SystemTime,
     ) -> RealTimeVisualization {
         RealTimeVisualization {
@@ -65,10 +69,14 @@ impl RealTimeVisualization {
             inertial_data: VecDeque::from(
                 [Data::new(); (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get()) as usize],
             ),
+            groundtruth_data: VecDeque::from(
+                [Data::new(); (config::PLOT_RANGE_WINDOW * config::GENERATOR_FREQ.get()) as usize],
+            ),
             rx_gps,
             rx_avg,
             rx_kalman,
             rx_inertial,
+            rx_groundtruth,
             plot_start: SystemTime::now()
                 .duration_since(simulation_start)
                 .unwrap()
@@ -86,6 +94,7 @@ impl RealTimeVisualization {
         rx_avg: Receiver<Telemetry>,
         rx_kalman: Receiver<Telemetry>,
         rx_inertial: Receiver<Telemetry>,
+        rx_groundtruth: Receiver<Telemetry>,
         simulation_start: SystemTime,
     ) {
         let mut window: PistonWindow = WindowSettings::new("RustSFD", [450, 300])
@@ -96,13 +105,14 @@ impl RealTimeVisualization {
 
         window.set_max_fps(config::FPS as u64);
 
-        let mut real_time_visualization = RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, simulation_start);
+        let mut real_time_visualization = RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start);
 
         while draw_piston_window(&mut window, |b: PistonBackend<'_, '_>| {
             real_time_visualization.get_plot_data(PlotDataType::Gps);
             real_time_visualization.get_plot_data(PlotDataType::Avg);
             real_time_visualization.get_plot_data(PlotDataType::Kalman);
             real_time_visualization.get_plot_data(PlotDataType::Inertial);
+            real_time_visualization.get_plot_data(PlotDataType::Groundtruth);
             real_time_visualization.draw(b);
 
             Ok(())
@@ -117,6 +127,7 @@ impl RealTimeVisualization {
             PlotDataType::Avg => (&self.rx_avg, &mut self.avg_data),
             PlotDataType::Kalman => (&self.rx_kalman, &mut self.kalman_data),
             PlotDataType::Inertial => (&self.rx_inertial, &mut self.inertial_data),
+            PlotDataType::Groundtruth => (&self.rx_groundtruth, &mut self.groundtruth_data),
         };
 
         while let Ok(data) = rx.try_recv() {
@@ -168,10 +179,11 @@ impl RealTimeVisualization {
             .draw()
             .unwrap();
 
-        self.chart_data(&self.gps_data, "GPS real data", GREEN, &mut chart);
-        self.chart_data(&self.avg_data, "Moving average filter", BLUE, &mut chart);
-        self.chart_data(&self.kalman_data, "Kalman filter", RED, &mut chart);
-        self.chart_data(&self.inertial_data, "Inertial navigator", MAGENTA, &mut chart);
+        // self.chart_data(&self.gps_data, "GPS real data", GREEN, &mut chart);
+        self.chart_data(&self.avg_data, "Moving average filter", BLUE, &mut chart, coord);
+        self.chart_data(&self.kalman_data, "Kalman filter", RED, &mut chart, coord);
+        self.chart_data(&self.inertial_data, "Inertial navigator", MAGENTA, &mut chart, coord);
+        self.chart_data(&self.groundtruth_data, "Groundtruth", BLACK, &mut chart, coord);
 
         chart
             .configure_series_labels()
@@ -213,13 +225,17 @@ impl RealTimeVisualization {
             PistonBackend<'_, '_>,
             Cartesian2d<RangedCoordi128, RangedCoordf64>,
         >,
+        coord: PlotAxis,
     ) {
         chart
             .draw_series(LineSeries::new(
                 data.iter().map(|p| {
                     (
                         p.timestamp.duration_since(self.simulation_start).unwrap().as_millis() as i128,
-                        p.x,
+                        match coord {
+                            PlotAxis::X => p.x,
+                            PlotAxis::Y => p.y,
+                            PlotAxis::Z => p.z,                        }
                     )
                 }),
                 color,
