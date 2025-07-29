@@ -138,7 +138,7 @@ fn start_inertial_navigator(
     }
 }
 
-fn start_visualization(communication_registry: &mut CommunicationRegistry) -> JoinHandle<()> {
+fn start_visualization(communication_registry: &mut CommunicationRegistry, simulation_start: SystemTime) -> JoinHandle<()> {
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
     let (tx_gps, rx_gps) = mpsc::channel();
@@ -148,7 +148,7 @@ fn start_visualization(communication_registry: &mut CommunicationRegistry) -> Jo
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
     communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
 
-    Visualization::run(rx_avg, rx_kalman, rx_gps, rx_inertial, SystemTime::now())
+    Visualization::run(rx_avg, rx_kalman, rx_gps, rx_inertial, simulation_start)
 }
 
 fn create_data_consumer(
@@ -241,7 +241,7 @@ fn main() -> Result<(), Error> {
     let inertial_consumer_handle =
         create_data_consumer(DataSource::InertialNavigator, &mut communication_registry);
 
-    let visu_handle = start_visualization(&mut communication_registry);
+    let visu_handle = start_visualization(&mut communication_registry, simulation_start);
 
     let kalman_handle = start_kalman(&mut communication_registry)?;
     let avg_handle = start_avg_filter(&mut communication_registry)?;
