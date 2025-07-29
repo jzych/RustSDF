@@ -206,7 +206,6 @@ impl RealTimeVisualization {
             &mut chart,
             coord
         );
-        
         self.chart_data(
             &self.avg_data,
             "Moving average filter",
