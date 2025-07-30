@@ -294,3 +294,110 @@ impl RealTimeVisualization {
             .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rand_distr::num_traits::real::{self, Real};
+
+    use crate::real_time_visualization;
+
+    use super::*;
+
+    use std::sync::mpsc::{self, Sender};
+
+    // #[test]
+    // fn test_chart_data() {
+    //     let simulation_start = SystemTime::now();
+    //     let (_, rx_gps) = mpsc::channel();
+    //     let (_, rx_avg) = mpsc::channel();
+    //     let (_, rx_kalman) = mpsc::channel();
+    //     let (_, rx_inertial) = mpsc::channel();
+    //     let (_, rx_groundtruth) = mpsc::channel();
+
+    //     let mut window: PistonWindow = WindowSettings::new("RustSFD", [450, 300])
+    //         .samples(4)
+    //         .exit_on_esc(true)
+    //         .build()
+    //         .unwrap();
+
+    //     window.set_max_fps(config::FPS as u64);
+
+    //     let real_time_visualization = RealTimeVisualization::new(
+    //         rx_gps,
+    //         rx_avg,
+    //         rx_kalman,
+    //         rx_inertial,
+    //         rx_groundtruth,
+    //         simulation_start,
+    //     );
+
+    //     draw_piston_window(&mut window, |b| {
+    //         let root: DrawingArea<PistonBackend<'_, '_>, _> = b.into_drawing_area();
+    //         let mut chart = ChartBuilder::on(&root)
+    //             .build_cartesian_2d(real_time_visualization.plot_start..real_time_visualization.plot_stop, config::PLOT_RANGE_Y_AXIS_MIN..config::PLOT_RANGE_Y_AXIS_MAX)
+    //             .unwrap();
+    //         //real_time_visualization.chart_data(data, "label", YELLOW, chart, coord);
+
+    //         Ok(())
+    //     });
+    // }
+
+    fn prepare_test_env() -> (
+        RealTimeVisualization,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+    ) {
+        let simulation_start = SystemTime::now();
+        let (tx_gps, rx_gps) = mpsc::channel();
+        let (tx_avg, rx_avg) = mpsc::channel();
+        let (tx_kalman, rx_kalman) = mpsc::channel();
+        let (tx_inertial, rx_inertial) = mpsc::channel();
+        let (tx_groundtruth, rx_groundtruth) = mpsc::channel();
+
+        let real_time_visualization = RealTimeVisualization::new(
+            rx_gps,
+            rx_avg,
+            rx_kalman,
+            rx_inertial,
+            rx_groundtruth,
+            simulation_start,
+        );
+
+        (
+            real_time_visualization,
+            tx_gps,
+            tx_avg,
+            tx_kalman,
+            tx_inertial,
+            tx_groundtruth,
+        )
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_get_plot_data_wrong_input() {
+        let (mut real_time_visualization, _, tx_avg, _, _, _) =
+            prepare_test_env();
+
+        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 0.0);
+
+        let _ = tx_avg.send(Telemetry::Acceleration(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Avg);
+        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 1.0);
+    }
+
+    #[test]
+    fn test_get_plot_data_correct_input() {
+        let (mut real_time_visualization, _, tx_avg, _, _, _) =
+            prepare_test_env();
+
+        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 0.0);
+
+        let _ = tx_avg.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Avg);
+        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 1.0);
+    }
+}
