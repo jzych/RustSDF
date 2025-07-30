@@ -214,7 +214,7 @@ impl RealTimeVisualization {
         );
         self.chart_data(
             &self.avg_data,
-            "Moving average filter",
+            "Moving GPS average",
             BLUE,
             &mut chart,
             coord,
@@ -237,7 +237,8 @@ impl RealTimeVisualization {
         chart
             .configure_series_labels()
             .border_style(BLACK)
-            .background_style(WHITE.mix(0.0))
+            .background_style(WHITE.mix(100.0))
+            .position(SeriesLabelPosition::LowerRight)
             .draw()
             .unwrap();
     }

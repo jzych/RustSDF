@@ -215,7 +215,8 @@ fn create_plot(
     chart
         .configure_series_labels()
         .border_style(BLACK)
-        .background_style(WHITE.mix(0.0))
+        .background_style(WHITE.mix(100.0))
+        .position(SeriesLabelPosition::LowerRight)
         .draw()
         .unwrap()
 }
