@@ -21,6 +21,7 @@ pub struct EstimatorBuilder {
     estimator_type: EstimatorType,
     subscribers: Vec<Sender<Telemetry>>,
     input_rx_option: Option<Receiver<Telemetry>>,
+    buffer_length_option: Option<usize>,
 }
 
 impl EstimatorBuilder {
@@ -28,13 +29,15 @@ impl EstimatorBuilder {
         Self {
             estimator_type: EstimatorType::Average,
             subscribers: Vec::new(),
-            input_rx_option: None,    
+            input_rx_option: None,   
+            buffer_length_option: None, 
         }
     }
 
-    pub fn new_average() -> Self {
+    pub fn new_average(buffer_length : usize) -> Self {
         Self {
             estimator_type: EstimatorType::Average,
+            buffer_length_option: Some(buffer_length),
             ..Self::default()
         }
     }
@@ -75,6 +78,7 @@ impl EstimatorBuilder {
                     EstimatorType::Average => Average::run(
                         self.subscribers,
                         input_rx,
+                        self.buffer_length_option.expect("Buffer length must be defined!"),
                     ),
                     EstimatorType::Kalman => KalmanFilter::run(
                         self.subscribers,
@@ -108,7 +112,7 @@ mod tests {
 
     #[test]
     fn given_new_average_expect_builder_with_estimator_type_average() {
-        let average_config = EstimatorBuilder::new_average();
+        let average_config = EstimatorBuilder::new_average(3 as usize);
         assert_eq!(average_config.estimator_type, EstimatorType::Average);
         assert!(average_config.subscribers.is_empty());
     }
@@ -150,10 +154,20 @@ mod tests {
     #[timeout(10000)]
     fn given_average_builder_expect_spawn_to_spawn_average_thread() {
         let (_, input_rx) = std::sync::mpsc::channel();
-        let handle = EstimatorBuilder::new_average()
+        let handle = EstimatorBuilder::new_average(3 as usize)
             .with_input_rx(input_rx)
             .spawn();
         assert!(handle.join().is_ok());
+    }
+
+    #[test]
+    #[should_panic]
+    fn given_no_buffer_length_expect_panic_on_avereage_filter_creation() {
+        let (_, input_rx) = std::sync::mpsc::channel();
+        let mut builder = EstimatorBuilder::new_average(3 as usize)
+            .with_input_rx(input_rx);
+        builder.buffer_length_option = None;
+        let _ = builder.spawn();
     }
 
     #[test]

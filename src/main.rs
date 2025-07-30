@@ -109,7 +109,7 @@ fn start_avg_filter(
     communication_registry.register_for_input(DataSource::Gps, tx);
 
     match communication_registry.get_registered_transmitters(DataSource::Average) {
-        Some(subscribers) => Ok(EstimatorBuilder::new_average()
+        Some(subscribers) => Ok(EstimatorBuilder::new_average(BUFFER_LENGTH)
             .with_subscribers(subscribers)
             .with_input_rx(input_rx)
             .spawn()),
