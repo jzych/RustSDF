@@ -1,9 +1,7 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc,
-        mpsc::Receiver,
-        Arc, Mutex,
+        mpsc, Arc, Mutex,
     },
     thread::{self, JoinHandle},
     time::SystemTime,
@@ -15,7 +13,7 @@ use crate::{
     data::{Data, Telemetry},
     estimator_builder::EstimatorBuilder,
     logger::{get_data, log},
-    real_time_visualization::RealTimeVisualization,
+    real_time_visualization::{PlotterReceivers, RealTimeVisualization},
     sensor_builder::SensorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
     visualization::Visualization,
@@ -138,17 +136,43 @@ fn start_inertial_navigator(
     }
 }
 
-fn start_visualization(communication_registry: &mut CommunicationRegistry, simulation_start: SystemTime) -> JoinHandle<()> {
+fn start_visualization(
+    communication_registry: &mut CommunicationRegistry,
+    simulation_start: SystemTime,
+) -> JoinHandle<()> {
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
     let (tx_gps, rx_gps) = mpsc::channel();
     let (tx_inertial, rx_inertial) = mpsc::channel();
+    let (tx_groundtruth, rx_groundtruth) = mpsc::channel();
     communication_registry.register_for_input(DataSource::Average, tx_avg);
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
     communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
+    communication_registry.register_for_input(DataSource::Groundtruth, tx_groundtruth);
 
-    Visualization::run(rx_avg, rx_kalman, rx_gps, rx_inertial, simulation_start)
+    Visualization::run(
+        rx_avg,
+        rx_kalman,
+        rx_gps,
+        rx_inertial,
+        rx_groundtruth,
+        simulation_start,
+    )
+}
+
+fn start_trajectory_generator(
+    consumer_registry: &mut CommunicationRegistry,
+    shutdown_trigger: Arc<AtomicBool>,
+) -> (Arc<Mutex<Data>>, JoinHandle<()>) {
+    let subscribers = consumer_registry
+        .get_registered_transmitters(DataSource::Groundtruth)
+        .unwrap_or_default();
+    TrajectoryGeneratorBuilder::new()
+        .with_frequency(GENERATOR_FREQ)
+        .with_perlin_mode()
+        .with_subscribers(subscribers)
+        .spawn(Arc::clone(&shutdown_trigger))
 }
 
 fn create_data_consumer(
@@ -200,48 +224,47 @@ fn system_shutdown(shutdown_trigger: Arc<AtomicBool>) {
 }
 
 fn register_dynamic_plot(
-    communication_registry: &mut CommunicationRegistry
-) -> (
-    Receiver<Telemetry>,
-    Receiver<Telemetry>,
-    Receiver<Telemetry>,
-    Receiver<Telemetry>,
-    SystemTime,
-) {
+    communication_registry: &mut CommunicationRegistry,
+) -> (PlotterReceivers, SystemTime) {
     let simulation_start = SystemTime::now();
     let (tx_gps, rx_gps) = mpsc::channel();
     let (tx_avg, rx_avg) = mpsc::channel();
     let (tx_kalman, rx_kalman) = mpsc::channel();
     let (tx_inertial, rx_inertial) = mpsc::channel();
+    let (tx_groundtruth, rx_groundtruth) = mpsc::channel();
 
     communication_registry.register_for_input(DataSource::Gps, tx_gps);
     communication_registry.register_for_input(DataSource::Average, tx_avg);
     communication_registry.register_for_input(DataSource::Kalman, tx_kalman);
     communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
+    communication_registry.register_for_input(DataSource::Groundtruth, tx_groundtruth);
 
-    (rx_gps, rx_avg, rx_kalman, rx_inertial, simulation_start)
+    (
+        PlotterReceivers {
+            rx_gps,
+            rx_avg,
+            rx_kalman,
+            rx_inertial,
+            rx_groundtruth,
+        },
+        simulation_start,
+    )
 }
 
 fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
-    let (generated_data_handle, generator_handle, groundtruth_rx) =
-        TrajectoryGeneratorBuilder::new()
-            .with_frequency(GENERATOR_FREQ)
-            .with_perlin_mode()
-            .spawn(Arc::clone(&shutdown_trigger));
+    let (receivers, simulation_start) = register_dynamic_plot(&mut communication_registry);
+    let visu_handle = start_visualization(&mut communication_registry, simulation_start);
 
-    let (dynamic_rx_gps, dynamic_rx_avg, dynamic_rx_kalman, dynamic_rx_inertial, simulation_start) =
-        register_dynamic_plot(&mut communication_registry);
-
+    let (generated_data_handle, generator_handle) =
+        start_trajectory_generator(&mut communication_registry, Arc::clone(&shutdown_trigger));
     let kalman_consumer_handle =
         create_data_consumer(DataSource::Kalman, &mut communication_registry);
     let average_consumer_handle =
         create_data_consumer(DataSource::Average, &mut communication_registry);
     let inertial_consumer_handle =
         create_data_consumer(DataSource::InertialNavigator, &mut communication_registry);
-
-    let visu_handle = start_visualization(&mut communication_registry, simulation_start);
 
     let kalman_handle = start_kalman(&mut communication_registry)?;
     let avg_handle = start_avg_filter(&mut communication_registry)?;
@@ -258,14 +281,7 @@ fn main() -> Result<(), Error> {
         Arc::clone(&shutdown_trigger),
     )?;
 
-    RealTimeVisualization::run(
-        dynamic_rx_gps,
-        dynamic_rx_avg,
-        dynamic_rx_kalman,
-        dynamic_rx_inertial,
-        groundtruth_rx,
-        simulation_start,
-    );
+    RealTimeVisualization::run(receivers, simulation_start);
     system_shutdown(Arc::clone(&shutdown_trigger));
 
     generator_handle.join().unwrap();
@@ -308,7 +324,7 @@ mod tests {
     fn imu_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _, _) = TrajectoryGeneratorBuilder::new()
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_random_mode()
             .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
@@ -324,7 +340,7 @@ mod tests {
     fn gps_startup_without_subscriber_fails() {
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _, _) = TrajectoryGeneratorBuilder::new()
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
             .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
@@ -362,7 +378,7 @@ mod tests {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _, _) = TrajectoryGeneratorBuilder::new()
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
             .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
@@ -383,7 +399,7 @@ mod tests {
         let (tx, _) = mpsc::channel();
         let mut communication_registry = CommunicationRegistry::new();
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _, _) = TrajectoryGeneratorBuilder::new()
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
             .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));
@@ -435,7 +451,7 @@ mod tests {
     #[test]
     fn test_producer_sends_data() {
         let shutdown_trigger = Arc::new(AtomicBool::new(false));
-        let (generated_data_handle, _, _) = TrajectoryGeneratorBuilder::new()
+        let (generated_data_handle, _) = TrajectoryGeneratorBuilder::new()
             .with_perlin_mode()
             .with_frequency(GENERATOR_FREQ)
             .spawn(Arc::clone(&shutdown_trigger));

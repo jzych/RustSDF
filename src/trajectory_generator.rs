@@ -4,13 +4,17 @@ use rand::Rng;
 use std::{
     f64::consts::PI,
     num::NonZeroU32,
-    sync::{atomic::{AtomicBool, Ordering}, mpsc::Receiver, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::Sender,
+        Arc, Mutex,
+    },
     thread::JoinHandle,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::utils::get_cycle_duration;
 use crate::config::HELIX_FREQUENCY;
+use crate::utils::get_cycle_duration;
 use crate::Telemetry;
 
 #[derive(Clone, Copy)]
@@ -27,6 +31,7 @@ pub struct TrajectoryGenerator {
     mode: GenerationMode,
     seed: u32,
     step: f64,
+    subscribers: Vec<Sender<Telemetry>>,
 }
 
 impl TrajectoryGenerator {
@@ -35,6 +40,7 @@ impl TrajectoryGenerator {
         shutdown_trigger: Arc<AtomicBool>,
         mode: GenerationMode,
         seed: u32,
+        subscribers: Vec<Sender<Telemetry>>,
     ) -> TrajectoryGenerator {
         TrajectoryGenerator {
             data_handle,
@@ -42,6 +48,7 @@ impl TrajectoryGenerator {
             mode,
             seed,
             step: 0.0,
+            subscribers,
         }
     }
 
@@ -127,6 +134,7 @@ pub struct TrajectoryGeneratorBuilder {
     mode: GenerationMode,
     frequency: NonZeroU32,
     seed: Option<u32>,
+    subscribers: Vec<Sender<Telemetry>>,
 }
 
 #[allow(dead_code)]
@@ -136,6 +144,7 @@ impl TrajectoryGeneratorBuilder {
             mode: GenerationMode::Random,
             frequency: NonZeroU32::new(1).unwrap(),
             seed: None,
+            subscribers: vec![],
         }
     }
 
@@ -175,14 +184,21 @@ impl TrajectoryGeneratorBuilder {
         self
     }
 
-    pub fn spawn(&self, shutdown_trigger: Arc<AtomicBool>) -> (Arc<Mutex<Data>>, JoinHandle<()>, Receiver<Telemetry>) {
+    pub fn with_subscribers(self, subscribers: Vec<Sender<Telemetry>>) -> Self {
+        Self {
+            subscribers,
+            ..self
+        }
+    }
+
+    pub fn spawn(self, shutdown_trigger: Arc<AtomicBool>) -> (Arc<Mutex<Data>>, JoinHandle<()>) {
         let data_handle = Arc::new(Mutex::new(Data::new()));
-        let (tx, rx) = std::sync::mpsc::channel();
         let mut generator = TrajectoryGenerator::new(
             Arc::clone(&data_handle),
             Arc::clone(&shutdown_trigger),
             self.mode,
             self.seed.unwrap_or_default(),
+            self.subscribers,
         );
 
         *generator.data_handle.lock().unwrap() = generator.generate_data();
@@ -194,14 +210,18 @@ impl TrajectoryGeneratorBuilder {
                 {
                     *generator.data_handle.lock().unwrap() = data;
                 }
-                let _ = tx.send(Telemetry::Position(data));
+                if !generator.subscribers.is_empty() {
+                    generator
+                        .subscribers
+                        .retain(|tx| tx.send(Telemetry::Position(data)).is_ok());
+                }
 
                 std::thread::sleep(get_cycle_duration(frequency));
             }
             println!("Trajectory generator removed");
         });
 
-        (Arc::clone(&data_handle), generator_handle, rx)
+        (Arc::clone(&data_handle), generator_handle)
     }
 }
 
@@ -209,15 +229,18 @@ impl TrajectoryGeneratorBuilder {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
+    use std::sync::mpsc;
     use std::sync::Arc;
     use std::time::Duration;
 
     #[test]
     fn test_rnd_trajectory_generator_updates_data() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let (data_handle, handle, _) = TrajectoryGeneratorBuilder::new()
+        let (tx, rx) = mpsc::channel();
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
             .with_frequency(NonZeroU32::new(10).unwrap())
             .with_random_mode()
+            .with_subscribers(vec![tx])
             .spawn(Arc::clone(&shutdown));
 
         std::thread::sleep(Duration::from_millis(300));
@@ -229,14 +252,17 @@ mod tests {
         assert!(data.x >= 0.0 && data.x <= 100.0);
         assert!(data.y >= 0.0 && data.y <= 100.0);
         assert!(data.z >= 0.0 && data.z <= 100.0);
+        assert!(rx.try_recv().is_ok());
     }
 
     #[test]
     fn test_angled_helical_trajectory_generator_updates_data() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let (data_handle, handle, _) = TrajectoryGeneratorBuilder::new()
+        let (tx, rx) = mpsc::channel();
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
             .with_frequency(NonZeroU32::new(5).unwrap())
             .with_angled_helical_mode()
+            .with_subscribers(vec![tx])
             .spawn(Arc::clone(&shutdown));
 
         std::thread::sleep(Duration::from_millis(300));
@@ -248,14 +274,17 @@ mod tests {
         assert!(data.x >= 0.0 && data.x <= 100.0);
         assert!(data.y >= 0.0 && data.y <= 100.0);
         assert!(data.z >= 0.0 && data.z <= 100.0);
+        assert!(rx.try_recv().is_ok());
     }
 
     #[test]
     fn test_perlin_trajectory_generator_updates_data() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let (data_handle, handle, _) = TrajectoryGeneratorBuilder::new()
+        let (tx, rx) = mpsc::channel();
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
             .with_frequency(NonZeroU32::new(5).unwrap())
             .with_perlin_mode()
+            .with_subscribers(vec![tx])
             .spawn(Arc::clone(&shutdown));
 
         std::thread::sleep(Duration::from_millis(300));
@@ -267,14 +296,17 @@ mod tests {
         assert!(data.x >= 0.0 && data.x <= 100.0);
         assert!(data.y >= 0.0 && data.y <= 100.0);
         assert!(data.z >= 0.0 && data.z <= 100.0);
+        assert!(rx.try_recv().is_ok());
     }
 
     #[test]
     fn test_deterministic_perlin_trajectory_generator_updates_data() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let (data_handle, handle, _) = TrajectoryGeneratorBuilder::new()
+        let (tx, rx) = mpsc::channel();
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
             .with_frequency(NonZeroU32::new(5).unwrap())
             .with_determinisitic_perlin_mode()
+            .with_subscribers(vec![tx])
             .spawn(Arc::clone(&shutdown));
 
         std::thread::sleep(Duration::from_millis(300));
@@ -286,12 +318,13 @@ mod tests {
         assert!(data.x >= 0.0 && data.x <= 100.0);
         assert!(data.y >= 0.0 && data.y <= 100.0);
         assert!(data.z >= 0.0 && data.z <= 100.0);
+        assert!(rx.try_recv().is_ok());
     }
 
     #[test]
     fn test_shutdown_trigger_stops_generation() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let (data_handle, handle, _) = TrajectoryGeneratorBuilder::new()
+        let (data_handle, handle) = TrajectoryGeneratorBuilder::new()
             .with_yellow_seed()
             .with_frequency(NonZeroU32::new(5).unwrap())
             .with_perlin_mode()

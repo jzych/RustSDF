@@ -14,12 +14,14 @@ impl Visualization {
         rx_kalman: Receiver<Telemetry>,
         rx_gps: Receiver<Telemetry>,
         rx_inertial: Receiver<Telemetry>,
+        rx_groundtruth: Receiver<Telemetry>,
         simulation_start: SystemTime,
     ) -> JoinHandle<()> {
         let mut avg_data = Vec::new();
         let mut kalman_data = Vec::new();
         let mut gps_data = Vec::new();
         let mut inertial_data = Vec::new();
+        let mut groundtruth_data = Vec::new();
 
         let handle = thread::spawn(move || {
             for data in rx_gps {
@@ -65,7 +67,18 @@ impl Visualization {
                     }
                 }
             }
-            draw(avg_data, kalman_data, gps_data, inertial_data, simulation_start);
+
+            for data in rx_groundtruth {
+                match data {
+                    Telemetry::Position(d) => {
+                        groundtruth_data.push(d);
+                    }
+                    Telemetry::Acceleration(_) => {
+                        panic!("Inertial navigator should not return acceleration");
+                    }
+                }
+            }
+            draw(avg_data, kalman_data, gps_data, inertial_data, groundtruth_data, simulation_start);
             println!("Visualization removed");
         });
         handle
@@ -81,6 +94,7 @@ fn select_xyz(coord_to_plot: &str, p: Data) -> f64 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_plot(
     root: DrawingArea<BitMapBackend<'_>, Shift>,
     coord_to_plot: &str,
@@ -88,6 +102,7 @@ fn create_plot(
     kalman_data: &[Data],
     gps_data: &[Data],
     inertial_data: &[Data],
+    groundtruth_data: &[Data],
     simulation_start: SystemTime,
 ) {
     let plot_start = gps_data[0]
@@ -117,6 +132,20 @@ fn create_plot(
         .y_desc(coord_to_plot)
         .draw()
         .unwrap();
+
+    chart
+        .draw_series(LineSeries::new(
+            groundtruth_data.iter().map(|p| {
+                (
+                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    select_xyz(coord_to_plot, *p),
+                )
+            }),
+            &BLACK,
+        ))
+        .unwrap()
+        .label("Groundtruth")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLACK));
 
     chart
         .draw_series(LineSeries::new(
@@ -196,6 +225,7 @@ fn draw(
     kalman_data: Vec<Data>,
     gps_data: Vec<Data>,
     inertial_data: Vec<Data>,
+    groundtruth_data: Vec<Data>,
     simulation_start: SystemTime,
 ) {
     let root =
@@ -217,6 +247,7 @@ fn draw(
         &kalman_data,
         &gps_data,
         &inertial_data,
+        &groundtruth_data,
         simulation_start,
     );
     create_plot(
@@ -226,6 +257,7 @@ fn draw(
         &kalman_data,
         &gps_data,
         &inertial_data,
+        &groundtruth_data,
         simulation_start,
     );
     create_plot(
@@ -235,6 +267,7 @@ fn draw(
         &kalman_data,
         &gps_data,
         &inertial_data,
+        &groundtruth_data,
         simulation_start,
     );
 }
@@ -281,8 +314,9 @@ mod tests {
         let kalman_data = vec![Data::new()];
         let gps_data = vec![Data::new()];
         let inertial_data = vec![Data::new()];
+        let groundtruth_data = vec![Data::new()];
 
-        draw(avg_data, kalman_data, gps_data, inertial_data, simulation_time);
+        draw(avg_data, kalman_data, gps_data, inertial_data, groundtruth_data, simulation_time);
 
         let path = Path::new("output/plot_gps_avg_kalman.png");
         assert!(path.exists());
