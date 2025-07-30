@@ -71,26 +71,27 @@ impl KalmanFilter {
         rx: Receiver<Telemetry>,
     ) -> JoinHandle<()> {
         let mut kalman = KalmanFilter::new(tx);
-        let imu_samples_to_skip : u32 = 0;
-        let mut imu_samples_received : u32 = 0;
         let mut last_imu_data_timestamp = SystemTime::now();
         let mut gps_samples_received : u32 = 0;
         let mut prev_gps_data : Data = Data::new();
 
         std::thread::spawn( move || {
-            
+            for telemetry in &rx {
+                initialize_state_using_gps_data(
+                        telemetry,
+                        &mut gps_samples_received,
+                        &mut kalman.state.x,
+                        &mut prev_gps_data,
+                );
+                if gps_samples_received == 2 {
+                    break;
+                }
+            }
             for telemetry in rx {
-
                 if telemetry_check(
-                    imu_samples_to_skip,
-                    &mut imu_samples_received,
                     telemetry,
                     &mut last_imu_data_timestamp,
-                    &mut gps_samples_received,
-                    &mut kalman.state,
-                    &mut prev_gps_data
                 ) {
-
                     match telemetry {                    
                         Telemetry::Acceleration(data) => {
                             // prediction
@@ -134,26 +135,17 @@ impl KalmanFilter {
     }   
 }
 
-
 fn telemetry_check(
-    imu_samples_to_skip: u32,
-    imu_samples_received: &mut u32,
     telemetry: Telemetry,
     last_imu_data_timestamp: &mut SystemTime,
-    gps_samples_received: &mut u32,
-    state: &mut KalmanData,
-    prev_gps_data: &mut Data,
 ) -> bool {
     match telemetry {                    
         Telemetry::Acceleration(_) => {
             let current_imu_data_timestamp = SystemTime::now();
             let imu_elapsed: Duration = current_imu_data_timestamp.duration_since(*last_imu_data_timestamp).unwrap(); 
             *last_imu_data_timestamp = current_imu_data_timestamp;
-            *imu_samples_received += 1;
 
-            if (*imu_samples_received <= imu_samples_to_skip) || (*gps_samples_received < 2) {
-                false
-            } else if imu_elapsed > Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 + KALMAN_TIMING_TOLERANCE)) {
+            if imu_elapsed > Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 + KALMAN_TIMING_TOLERANCE)) {
                 eprintln!("Kalman: IMU data is late! Previous data obtained {}s {:03}ms ago. ",
                     imu_elapsed.as_secs(),
                     imu_elapsed.subsec_millis()
@@ -172,36 +164,7 @@ fn telemetry_check(
                 false
             }
         }
-        Telemetry::Position(data) => {
-            *gps_samples_received += 1;
-            
-            if *gps_samples_received < 2 {
-                *prev_gps_data = data;
-                false
-            } else if *gps_samples_received == 2 {
-                let delta_time = data.timestamp.duration_since(prev_gps_data.timestamp).unwrap().as_secs_f64();
-                state.x[0] = data.x;
-                state.x[1] = data.y;
-                state.x[2] = data.z;
-                state.x[3] = (data.x - prev_gps_data.x)/delta_time;
-                state.x[4] = (data.y - prev_gps_data.y)/delta_time;
-                state.x[5] = (data.z - prev_gps_data.z)/delta_time;
-                log(GENERAL_LOG, format!("Kalman: Initial position from GPS data: {}, {}, {}",
-                    state.x[0],
-                    state.x[1],
-                    state.x[2]
-                ));
-                log(GENERAL_LOG, format!("Kalman: Initial velocity from GPS data: {}, {}, {}, dt = {}",
-                    state.x[3],
-                    state.x[4],
-                    state.x[5],
-                    delta_time,
-                ));
-                false
-            } else {
-                *imu_samples_received > imu_samples_to_skip
-            }
-        }
+        Telemetry::Position(_data) => {true},
     }
 }
 
@@ -258,7 +221,6 @@ mod test {
 
     use std::{sync::mpsc, time::SystemTime};
     use std::time::Duration;
-    use nalgebra::Matrix6x1;
 
     use super::*;
 
@@ -310,194 +272,76 @@ mod test {
     }
 
     #[test]
-    fn telemetry_check_test_gps_not_sending_data() {
-        let imu_samples_to_skip: u32 = 2;
-        let mut imu_samples_received: u32 = 0;
-        let mut gps_samples_received: u32 = 0;
+    fn telemetry_check_test_imu_correct_intervals() {
         let data = Data::new();
         let telemetry_from_imu: Telemetry = Telemetry::Acceleration(data);
         let mut last_imu_data_timestamp: SystemTime = SystemTime::now();
-        let mut state: KalmanData = KalmanData::new();
-        let mut prev_gps_data: Data = Data::new();
 
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
+        assert!(telemetry_check(
             telemetry_from_imu,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
         ));
 
         std::thread::sleep(get_cycle_duration(IMU_FREQ));
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
+        assert!(telemetry_check(
             telemetry_from_imu,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
         ));
-
         std::thread::sleep(get_cycle_duration(IMU_FREQ));
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
+        assert!(telemetry_check(
             telemetry_from_imu,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
         ));
     }
 
     #[test]
     fn telemetry_check_test_imu_not_sending_data() {
-        let imu_samples_to_skip: u32 = 2;
-        let mut imu_samples_received: u32 = 0;
-        let mut gps_samples_received: u32 = 0;
         let data = Data::new();
         let telemetry_from_gps: Telemetry = Telemetry::Position(data);
         let mut last_imu_data_timestamp: SystemTime = SystemTime::now();
-        let mut state: KalmanData = KalmanData::new();
-        let mut prev_gps_data: Data = Data::new();
-
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
+        assert!(telemetry_check(
             telemetry_from_gps,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
         ));
 
         std::thread::sleep(get_cycle_duration(IMU_FREQ));
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
+        assert!(telemetry_check(
             telemetry_from_gps,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
         ));
 
         std::thread::sleep(get_cycle_duration(IMU_FREQ));
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
+        assert!(telemetry_check(
             telemetry_from_gps,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
         ));
     }
 
     #[test]
-    fn telemetry_check_happy_path_test() {
-        let imu_samples_to_skip: u32 = 2;
-        let mut imu_samples_received: u32 = 0;
-        let mut gps_samples_received: u32 = 0;
+    fn telemetry_check_imu_incorrect_intervals() {
+        let data = Data::new();
+        let telemetry_from_imu: Telemetry = Telemetry::Acceleration(data);
         let mut last_imu_data_timestamp: SystemTime = SystemTime::now();
-        let mut state: KalmanData = KalmanData::new();
-        let mut prev_gps_data: Data = Data::new();
 
-        let mut gps_data = Data { 
-            x: 0.0, 
-            y: 0.0, 
-            z: 0.0, 
-            timestamp: SystemTime::now().checked_sub(Duration::from_secs(1)).unwrap()
-        };
-        let mut telemetry_from_gps: Telemetry = Telemetry::Position(gps_data);
         
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
-            telemetry_from_gps,
-            &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
-        gps_data = Data { 
-            x: 1.0, 
-            y: 1.0, 
-            z: 1.0, 
-            timestamp: gps_data.timestamp.checked_add(Duration::from_secs(1)).unwrap()
-        };
-        telemetry_from_gps = Telemetry::Position(gps_data);
-        
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
-            telemetry_from_gps,
-            &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-        assert_eq!(state.x, Matrix6x1::new(1.0, 1.0, 1.0, 1.0, 1.0, 1.0));
-         
-        let imu_data = Data::new();
-        let telemetry_from_imu = Telemetry::Acceleration(imu_data);
-
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
+        std::thread::sleep(get_cycle_duration(IMU_FREQ));
+        assert!(telemetry_check(
             telemetry_from_imu,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
+        ));
+
+        assert!(!telemetry_check(
+            telemetry_from_imu,
+            &mut last_imu_data_timestamp,
         ));
 
         std::thread::sleep(get_cycle_duration(IMU_FREQ));
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
-            telemetry_from_imu,
-            &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
-        // make sure GPS is not served before IMU (prediction should run before correction)
-        assert!(!telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
-            telemetry_from_gps,
-            &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
         std::thread::sleep(get_cycle_duration(IMU_FREQ));
         assert!(telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
             telemetry_from_imu,
             &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
         ));
-        assert!(telemetry_check(
-            imu_samples_to_skip,
-            &mut imu_samples_received,
-            telemetry_from_gps,
-            &mut last_imu_data_timestamp,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
     }
 
     #[test]

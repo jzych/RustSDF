@@ -48,87 +48,43 @@ impl InertialNavigator {
         let mut prev_gps_data : Data = Data::new();
 
         std::thread::spawn( move || {
-        
-            for telemetry in rx {
-                if telemetry_check(
-                    telemetry,
-                    &mut gps_samples_received,
-                    &mut inertial_navigator.state,
-                    &mut prev_gps_data,
-                ) {
-                    match telemetry {                          
-                        Telemetry::Acceleration(data) => {
-                            let u = Matrix3x1::new(data.x, data.y, data.z);
-                            inertial_navigator.state = inertial_navigator.A * inertial_navigator.state + inertial_navigator.B * u;
-                        }
-                        Telemetry::Position(_data) => {
-                            eprintln!("Inertial Navigator: Position data not serviced by Inertial Navigator!");
-                        },
-                    }
-                    
-                    let inertial_navigator_position_estimate = Telemetry::Position(Data {
-                        x: inertial_navigator.state[0],
-                        y: inertial_navigator.state[1],
-                        z: inertial_navigator.state[2],
-                        timestamp: SystemTime::now()
-                    });
-
-                    inertial_navigator.tx.retain(|tx| tx.send(inertial_navigator_position_estimate).is_ok());
-                    if inertial_navigator.tx.is_empty() {
-                        break;
-                    }
-                    log(INTERTIAL_NAVIGATOR_LOG, inertial_navigator_position_estimate);
+            for telemetry in &rx {
+                initialize_state_using_gps_data(
+                        telemetry,
+                        &mut gps_samples_received,
+                        &mut inertial_navigator.state,
+                        &mut prev_gps_data,
+                );
+                if gps_samples_received == 2 {
+                    break;
                 }
             }
-            log(GENERAL_LOG, "Inertial navigator removed".to_string());
+            for telemetry in rx {
+                match telemetry {                          
+                    Telemetry::Acceleration(data) => {
+                        let u = Matrix3x1::new(data.x, data.y, data.z);
+                        inertial_navigator.state = inertial_navigator.A * inertial_navigator.state + inertial_navigator.B * u;
+                    }
+                    Telemetry::Position(_data) => {},
+                }
+                
+                let inertial_navigator_position_estimate = Telemetry::Position(Data {
+                    x: inertial_navigator.state[0],
+                    y: inertial_navigator.state[1],
+                    z: inertial_navigator.state[2],
+                    timestamp: SystemTime::now()
+                });
+
+                inertial_navigator.tx.retain(|tx| tx.send(inertial_navigator_position_estimate).is_ok());
+                if inertial_navigator.tx.is_empty() {
+                    break;
+                }
+                log(LOGGER_PREFIX, inertial_navigator_position_estimate);
+            }
+            println!("Inertial navigator removed");
         })
     }   
 }
-
-fn telemetry_check(
-    telemetry: Telemetry,
-    gps_samples_received: &mut u32,
-    state: &mut Matrix6x1<f64>,
-    prev_gps_data: &mut Data,
-) -> bool {
-    match telemetry {                    
-        Telemetry::Acceleration(_) => {
-            *gps_samples_received >= 2
-        }
-        Telemetry::Position(data) => {
-            *gps_samples_received += 1;
-            
-            if *gps_samples_received < 2 {
-                *prev_gps_data = data;
-                false
-            } else if *gps_samples_received == 2 {
-                let delta_time = data.timestamp.duration_since(prev_gps_data.timestamp).unwrap().as_secs_f64();
-                state[0] = data.x;
-                state[1] = data.y;
-                state[2] = data.z;
-                state[3] = (data.x - prev_gps_data.x)/delta_time;
-                state[4] = (data.y - prev_gps_data.y)/delta_time;
-                state[5] = (data.z - prev_gps_data.z)/delta_time;
-                log(GENERAL_LOG, format!("Inertial Navigator: Initial position from GPS data: {}, {}, {}",
-                    state[0],
-                    state[1],
-                    state[2]
-                ));
-                log(GENERAL_LOG, format!("Inertial Navigator: Initial velocity from GPS data: {}, {}, {}, dt = {}",
-                    state[3],
-                    state[4],
-                    state[5],
-                    delta_time,
-                ));
-                false
-            } else {
-                *gps_samples_received = 3;
-                false
-            }
-        }
-    }
-}
-
 
 #[cfg(test)]
 mod test {
@@ -137,7 +93,7 @@ mod test {
     use std::{
         sync::mpsc::Sender,
         sync::mpsc,
-        time::{Duration, SystemTime},
+        time::SystemTime,
     };
 
     use super::*;
@@ -149,112 +105,6 @@ mod test {
         let inertial_navigator = InertialNavigator::new(vec![tx]);
         approx::assert_abs_diff_eq!(inertial_navigator.A[(0,3)], get_cycle_duration_f64(IMU_FREQ));
         assert!(inertial_navigator.tx[0].send(Telemetry::Acceleration(Data::new())).is_ok());
-    }
-
-    #[test]
-    #[timeout(10000)]
-    fn telemetry_check_test_gps_not_sending_data() {
-        let mut gps_samples_received: u32 = 0;
-        let data = Data::new();
-        let telemetry_from_imu: Telemetry = Telemetry::Acceleration(data);
-        let mut state = Matrix6x1::new(
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,);
-        let mut prev_gps_data: Data = Data::new();
-
-        assert!(!telemetry_check(
-            telemetry_from_imu,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
-        std::thread::sleep(get_cycle_duration(IMU_FREQ));
-        assert!(!telemetry_check(
-            telemetry_from_imu,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
-        std::thread::sleep(get_cycle_duration(IMU_FREQ));
-        assert!(!telemetry_check(
-            telemetry_from_imu,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-    }
-
-    #[test]
-    #[timeout(10000)]
-    fn telemetry_check_happy_path_test() {
-        let mut gps_samples_received: u32 = 0;
-        let mut state = Matrix6x1::new(
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,);
-        let mut prev_gps_data: Data = Data::new();
-
-        let mut gps_data = Data { 
-            x: 0.0, 
-            y: 0.0, 
-            z: 0.0, 
-            timestamp: SystemTime::now().checked_sub(Duration::from_secs(1)).unwrap()
-        };
-        let mut telemetry_from_gps: Telemetry = Telemetry::Position(gps_data);
-        
-        // first GPS data
-        assert!(!telemetry_check(
-            telemetry_from_gps,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
-        gps_data = Data { 
-            x: 1.0, 
-            y: 1.0, 
-            z: 1.0, 
-            timestamp: gps_data.timestamp.checked_add(Duration::from_secs(1)).unwrap()
-        };
-        telemetry_from_gps = Telemetry::Position(gps_data);
-        
-        // second GPS data
-        assert!(!telemetry_check(
-            telemetry_from_gps,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-        assert_eq!(state, Matrix6x1::new(1.0, 1.0, 1.0, 1.0, 1.0, 1.0));
-         
-        let imu_data = Data::new();
-        let telemetry_from_imu = Telemetry::Acceleration(imu_data);
-
-        // IMU should now be processed
-        assert!(telemetry_check(
-            telemetry_from_imu,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
-        // make sure GPS data is not processed
-        assert!(!telemetry_check(
-            telemetry_from_gps,
-            &mut gps_samples_received,
-            &mut state,
-            &mut prev_gps_data
-        ));
-
     }
 
     #[test]
