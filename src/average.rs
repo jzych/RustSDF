@@ -11,9 +11,11 @@ use crate::data::{Data, Telemetry};
 pub struct Average;
 
 impl Average {
-
-    pub fn run(mut tx: Vec<Sender<Telemetry>>, rx: Receiver<Telemetry>, buffer_length: usize) -> JoinHandle<()> {
-
+    pub fn run(
+        mut tx: Vec<Sender<Telemetry>>,
+        rx: Receiver<Telemetry>,
+        buffer_length: usize,
+    ) -> JoinHandle<()> {
         thread::spawn(move || {
             let mut buffer = VecDeque::with_capacity(buffer_length);
 
@@ -111,7 +113,7 @@ mod test {
             timestamp: SystemTime::now(),
         };
 
-        let buffer_length : usize = 3;
+        let buffer_length: usize = 3;
         gen_vectors(2, &mut buffer);
         Average::handle_data_buffer(&mut buffer, data, buffer_length);
         assert!(buffer.len() == 3);
