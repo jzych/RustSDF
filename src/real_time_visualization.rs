@@ -6,6 +6,7 @@ use plotters_piston::{draw_piston_window, PistonBackend};
 
 use crate::config;
 use crate::data::{Data, Telemetry};
+use crate::utils;
 use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
@@ -32,9 +33,6 @@ enum PlotAxis {
     Y,
     Z,
 }
-
-const LIGHT_GRAY: RGBColor = RGBColor(150,150,150);
-const DARK_GREEN: RGBColor = RGBColor(0,225,0);
 
 impl std::fmt::Display for PlotAxis {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -99,11 +97,8 @@ impl RealTimeVisualization {
         }
     }
 
-    pub fn run(
-        receivers: PlotterReceivers,
-        simulation_start: SystemTime,
-    ) {
-        let mut window: PistonWindow = WindowSettings::new("RustSFD", [450, 300])
+    pub fn run(receivers: PlotterReceivers, simulation_start: SystemTime) {
+        let mut window: PistonWindow = WindowSettings::new("RustSFD", [1000, 900])
             .samples(4)
             .exit_on_esc(true)
             .build()
@@ -201,37 +196,37 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.groundtruth_data,
             "Groundtruth",
-            BLACK,
+            utils::GROUNDTURTH_PLOT_COLOR,
             &mut chart,
             coord,
         );
         self.chart_data(
             &self.gps_data,
             "GPS data",
-            LIGHT_GRAY,
+            utils::GPS_PLOT_COLOR,
             &mut chart,
-            coord
+            coord,
         );
         self.chart_data(
             &self.avg_data,
             "Moving GPS average",
-            BLUE,
+            utils::AVERAGE_PLOT_COLOR,
             &mut chart,
             coord,
         );
         self.chart_data(
             &self.inertial_data,
             "Inertial navigator",
-            DARK_GREEN,
+            utils::INERTIAL_PLOT_COLOR,
             &mut chart,
             coord,
         );
         self.chart_data(
             &self.kalman_data,
             "Kalman filter",
-            RED,
+            utils::KALMAN_PLOT_COLOR,
             &mut chart,
-            coord
+            coord,
         );
 
         chart

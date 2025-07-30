@@ -5,6 +5,8 @@ use std::thread;
 use std::time::SystemTime;
 use std::{sync::mpsc::Receiver, thread::JoinHandle};
 
+use crate::utils;
+
 #[allow(unused)]
 pub struct Visualization;
 
@@ -78,7 +80,14 @@ impl Visualization {
                     }
                 }
             }
-            draw(avg_data, kalman_data, gps_data, inertial_data, groundtruth_data, simulation_start);
+            draw(
+                avg_data,
+                kalman_data,
+                gps_data,
+                inertial_data,
+                groundtruth_data,
+                simulation_start,
+            );
             println!("Visualization removed");
         });
         handle
@@ -137,49 +146,20 @@ fn create_plot(
         .draw_series(LineSeries::new(
             groundtruth_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &BLACK,
+            &utils::GROUNDTURTH_PLOT_COLOR,
         ))
         .unwrap()
         .label("Groundtruth")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLACK));
-
-    chart
-        .draw_series(LineSeries::new(
-            kalman_data.iter().map(|p| {
-                (
-                    p.timestamp
-                        .duration_since(simulation_start)
-                        .unwrap()
-                        .as_secs_f64(),
-                    select_xyz(coord_to_plot, *p),
-                )
-            }),
-            &RED,
-        ))
-        .unwrap()
-        .label("Kalman filter")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED)); //TODO: investigate PathElem::new
-
-    chart
-        .draw_series(LineSeries::new(
-            avg_data.iter().map(|p| {
-                (
-                    p.timestamp
-                        .duration_since(simulation_start)
-                        .unwrap()
-                        .as_secs_f64(),
-                    select_xyz(coord_to_plot, *p),
-                )
-            }),
-            &BLUE,
-        ))
-        .unwrap()
-        .label("Moving average filter")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+        .legend(|(x, y)| {
+            PathElement::new(vec![(x, y), (x + 20, y)], utils::GROUNDTURTH_PLOT_COLOR)
+        });
 
     chart
         .draw_series(LineSeries::new(
@@ -192,25 +172,62 @@ fn create_plot(
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &GREEN,
+            &utils::GPS_PLOT_COLOR,
         ))
         .unwrap()
         .label("GPS real data")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::GPS_PLOT_COLOR));
+
+    chart
+        .draw_series(LineSeries::new(
+            avg_data.iter().map(|p| {
+                (
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
+                    select_xyz(coord_to_plot, *p),
+                )
+            }),
+            &utils::AVERAGE_PLOT_COLOR,
+        ))
+        .unwrap()
+        .label("Moving average filter")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::AVERAGE_PLOT_COLOR));
 
     chart
         .draw_series(LineSeries::new(
             inertial_data.iter().map(|p| {
                 (
-                    p.timestamp.duration_since(simulation_start).unwrap().as_secs_f64(),
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &MAGENTA,
+            &utils::INERTIAL_PLOT_COLOR,
         ))
         .unwrap()
         .label("Inertial navigator data")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], MAGENTA));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::INERTIAL_PLOT_COLOR));
+
+    chart
+        .draw_series(LineSeries::new(
+            kalman_data.iter().map(|p| {
+                (
+                    p.timestamp
+                        .duration_since(simulation_start)
+                        .unwrap()
+                        .as_secs_f64(),
+                    select_xyz(coord_to_plot, *p),
+                )
+            }),
+            &utils::KALMAN_PLOT_COLOR,
+        ))
+        .unwrap()
+        .label("Kalman filter")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::KALMAN_PLOT_COLOR)); //TODO: investigate PathElem::new
 
     chart
         .configure_series_labels()
@@ -277,8 +294,8 @@ fn draw(
 mod tests {
     use super::*;
 
-    use std::time::SystemTime;
     use std::path::Path;
+    use std::time::SystemTime;
 
     #[test]
     fn test_select_xyz() {
@@ -317,7 +334,14 @@ mod tests {
         let inertial_data = vec![Data::new()];
         let groundtruth_data = vec![Data::new()];
 
-        draw(avg_data, kalman_data, gps_data, inertial_data, groundtruth_data, simulation_time);
+        draw(
+            avg_data,
+            kalman_data,
+            gps_data,
+            inertial_data,
+            groundtruth_data,
+            simulation_time,
+        );
 
         let path = Path::new("output/plot_gps_avg_kalman.png");
         assert!(path.exists());
