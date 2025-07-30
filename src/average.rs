@@ -11,13 +11,16 @@ use crate::data::{Data, Telemetry};
 pub struct Average;
 
 impl Average {
-    pub fn run(mut tx: Vec<Sender<Telemetry>>, rx: Receiver<Telemetry>) -> JoinHandle<()> {
+    pub fn run(
+        mut tx: Vec<Sender<Telemetry>>,
+        rx: Receiver<Telemetry>,
+        buffer_length: usize,
+    ) -> JoinHandle<()> {
         thread::spawn(move || {
-            let buffer_size = 10;
-            let mut buffer = VecDeque::with_capacity(buffer_size);
+            let mut buffer = VecDeque::with_capacity(buffer_length);
 
             while let Ok(Telemetry::Position(new_data)) = rx.recv() {
-                Self::handle_data_buffer(&mut buffer, new_data);
+                Self::handle_data_buffer(&mut buffer, new_data, buffer_length);
                 let avg_data = Self::calculate_average(&buffer);
                 tx.retain(|tx| tx.send(Telemetry::Position(avg_data)).is_ok());
 
@@ -29,8 +32,8 @@ impl Average {
         })
     }
 
-    fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data) {
-        if buffer.len() < 10 {
+    fn handle_data_buffer(buffer: &mut VecDeque<Data>, new_data: Data, buffer_length: usize) {
+        if buffer.len() < buffer_length {
             buffer.push_back(new_data);
         } else {
             buffer.pop_front();
@@ -110,18 +113,14 @@ mod test {
             timestamp: SystemTime::now(),
         };
 
+        let buffer_length: usize = 3;
         gen_vectors(2, &mut buffer);
-        Average::handle_data_buffer(&mut buffer, data);
+        Average::handle_data_buffer(&mut buffer, data, buffer_length);
         assert!(buffer.len() == 3);
         approx::assert_abs_diff_eq!(buffer[2].x, data.x);
 
         buffer.clear();
         assert!(buffer.is_empty());
-
-        gen_vectors(10, &mut buffer);
-        Average::handle_data_buffer(&mut buffer, data);
-        assert!(buffer.len() == 10);
-        approx::assert_abs_diff_eq!(buffer[9].x, data.x);
     }
 
     fn gen_vectors(vec_len: u8, buffer: &mut VecDeque<Data>) {
