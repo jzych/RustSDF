@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn given_new_average_expect_builder_with_estimator_type_average() {
-        let average_config = EstimatorBuilder::new_average(3 as usize);
+        let average_config = EstimatorBuilder::new_average(3_usize);
         assert_eq!(average_config.estimator_type, EstimatorType::Average);
         assert!(average_config.subscribers.is_empty());
     }
@@ -154,7 +154,7 @@ mod tests {
     #[timeout(10000)]
     fn given_average_builder_expect_spawn_to_spawn_average_thread() {
         let (_, input_rx) = std::sync::mpsc::channel();
-        let handle = EstimatorBuilder::new_average(3 as usize)
+        let handle = EstimatorBuilder::new_average(3_usize)
             .with_input_rx(input_rx)
             .spawn();
         assert!(handle.join().is_ok());
@@ -164,7 +164,7 @@ mod tests {
     #[should_panic]
     fn given_no_buffer_length_expect_panic_on_avereage_filter_creation() {
         let (_, input_rx) = std::sync::mpsc::channel();
-        let mut builder = EstimatorBuilder::new_average(3 as usize)
+        let mut builder = EstimatorBuilder::new_average(3_usize)
             .with_input_rx(input_rx);
         builder.buffer_length_option = None;
         let _ = builder.spawn();
