@@ -153,12 +153,12 @@ fn create_plot(
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &config::GROUNDTURTH_PLOT_COLOR,
+            &config::GROUNDTRUTH_PLOT_COLOR,
         ))
         .unwrap()
         .label("Groundtruth")
         .legend(|(x, y)| {
-            PathElement::new(vec![(x, y), (x + 20, y)], config::GROUNDTURTH_PLOT_COLOR)
+            PathElement::new(vec![(x, y), (x + 20, y)], config::GROUNDTRUTH_PLOT_COLOR)
         });
 
     chart

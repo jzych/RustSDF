@@ -196,7 +196,7 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.groundtruth_data,
             "Groundtruth",
-            config::GROUNDTURTH_PLOT_COLOR,
+            config::GROUNDTRUTH_PLOT_COLOR,
             &mut chart,
             coord,
         );
