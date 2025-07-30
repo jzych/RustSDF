@@ -25,6 +25,9 @@ enum PlotAxis {
     Z,
 }
 
+const LIGHT_GRAY: RGBColor = RGBColor(150,150,150);
+const DARK_GREEN: RGBColor = RGBColor(0,225,0);
+
 impl std::fmt::Display for PlotAxis {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{self:?}")
@@ -202,7 +205,7 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.gps_data,
             "GPS data",
-            RGBColor(150,150,150), // Light Gray
+            LIGHT_GRAY,
             &mut chart,
             coord
         );
@@ -216,7 +219,7 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.inertial_data,
             "Inertial navigator",
-            RGBColor(0,225,0), // Dark Green
+            DARK_GREEN,
             &mut chart,
             coord,
         );
