@@ -202,7 +202,7 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.gps_data,
             "GPS data",
-            RGBColor(150,150,150),
+            RGBColor(150,150,150), // Light Gray
             &mut chart,
             coord
         );
@@ -216,7 +216,7 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.inertial_data,
             "Inertial navigator",
-            RGBColor(0,225,0),
+            RGBColor(0,225,0), // Dark Green
             &mut chart,
             coord,
         );
