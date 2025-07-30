@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use plotters::style::RGBColor;
 // Here are stored configuration values for the project
 
 // Refresh rate for tasks in Hz
@@ -26,3 +27,10 @@ pub const PLOT_RANGE_Y_AXIS_MAX: f64 = 120.0;
 
 // Average filter tuning parameters
 pub const BUFFER_LENGTH: usize = 3;
+
+// Plot chart colors
+pub const GROUNDTRUTH_PLOT_COLOR: RGBColor = RGBColor(0, 0, 0);     // black
+pub const GPS_PLOT_COLOR: RGBColor = RGBColor(150, 150, 150);       // light grey
+pub const AVERAGE_PLOT_COLOR: RGBColor = RGBColor(0, 0, 255);       // blue
+pub const INERTIAL_PLOT_COLOR: RGBColor = RGBColor(0, 225, 0);      // dark green
+pub const KALMAN_PLOT_COLOR: RGBColor = RGBColor(255, 0, 0);        // red
