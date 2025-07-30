@@ -5,7 +5,7 @@ use std::thread;
 use std::time::SystemTime;
 use std::{sync::mpsc::Receiver, thread::JoinHandle};
 
-use crate::utils;
+use crate::config;
 
 #[allow(unused)]
 pub struct Visualization;
@@ -153,12 +153,12 @@ fn create_plot(
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &utils::GROUNDTURTH_PLOT_COLOR,
+            &config::GROUNDTURTH_PLOT_COLOR,
         ))
         .unwrap()
         .label("Groundtruth")
         .legend(|(x, y)| {
-            PathElement::new(vec![(x, y), (x + 20, y)], utils::GROUNDTURTH_PLOT_COLOR)
+            PathElement::new(vec![(x, y), (x + 20, y)], config::GROUNDTURTH_PLOT_COLOR)
         });
 
     chart
@@ -172,11 +172,11 @@ fn create_plot(
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &utils::GPS_PLOT_COLOR,
+            &config::GPS_PLOT_COLOR,
         ))
         .unwrap()
-        .label("GPS real data")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::GPS_PLOT_COLOR));
+        .label("GPS with noise")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], config::GPS_PLOT_COLOR));
 
     chart
         .draw_series(LineSeries::new(
@@ -189,11 +189,11 @@ fn create_plot(
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &utils::AVERAGE_PLOT_COLOR,
+            &config::AVERAGE_PLOT_COLOR,
         ))
         .unwrap()
-        .label("Moving average filter")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::AVERAGE_PLOT_COLOR));
+        .label("Moving GPS average")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], config::AVERAGE_PLOT_COLOR));
 
     chart
         .draw_series(LineSeries::new(
@@ -206,11 +206,11 @@ fn create_plot(
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &utils::INERTIAL_PLOT_COLOR,
+            &config::INERTIAL_PLOT_COLOR,
         ))
         .unwrap()
-        .label("Inertial navigator data")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::INERTIAL_PLOT_COLOR));
+        .label("Inertial navigator")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], config::INERTIAL_PLOT_COLOR));
 
     chart
         .draw_series(LineSeries::new(
@@ -223,11 +223,11 @@ fn create_plot(
                     select_xyz(coord_to_plot, *p),
                 )
             }),
-            &utils::KALMAN_PLOT_COLOR,
+            &config::KALMAN_PLOT_COLOR,
         ))
         .unwrap()
         .label("Kalman filter")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], utils::KALMAN_PLOT_COLOR)); //TODO: investigate PathElem::new
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], config::KALMAN_PLOT_COLOR)); //TODO: investigate PathElem::new
 
     chart
         .configure_series_labels()
