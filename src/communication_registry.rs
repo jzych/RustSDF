@@ -10,6 +10,7 @@ pub enum DataSource {
     Average,
     InertialNavigator,
     Visualization,
+    Groundtruth,
 }
 
 pub struct CommunicationRegistry {
@@ -67,6 +68,9 @@ mod tests {
         assert!(registry
             .get_registered_transmitters(DataSource::InertialNavigator)
             .is_none());
+        assert!(registry
+            .get_registered_transmitters(DataSource::Groundtruth)
+            .is_none());
     }
 
     #[test]
@@ -86,6 +90,9 @@ mod tests {
             .is_none());
         assert!(registry
             .get_registered_transmitters(DataSource::InertialNavigator)
+            .is_none());
+        assert!(registry
+            .get_registered_transmitters(DataSource::Groundtruth)
             .is_none());
     }
 
@@ -125,5 +132,20 @@ mod tests {
         assert!(registry
             .get_registered_transmitters(DataSource::Imu)
             .is_none());
+    }
+
+    #[test]
+    fn given_subcribed_to_groundtruth_expect_sender_returned() {
+        let (tx, _) = mpsc::channel();
+        let mut registry = CommunicationRegistry::new();
+        registry.register_for_input(DataSource::Groundtruth, tx);
+
+        assert_eq!(
+            registry
+                .get_registered_transmitters(DataSource::Groundtruth)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }

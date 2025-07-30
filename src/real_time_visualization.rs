@@ -10,6 +10,14 @@ use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
+pub struct PlotterReceivers {
+    pub rx_gps: Receiver<Telemetry>,
+    pub rx_avg: Receiver<Telemetry>,
+    pub rx_kalman: Receiver<Telemetry>,
+    pub rx_inertial: Receiver<Telemetry>,
+    pub rx_groundtruth: Receiver<Telemetry>,
+}
+
 enum PlotDataType {
     Gps,
     Avg,
@@ -89,11 +97,7 @@ impl RealTimeVisualization {
     }
 
     pub fn run(
-        rx_gps: Receiver<Telemetry>,
-        rx_avg: Receiver<Telemetry>,
-        rx_kalman: Receiver<Telemetry>,
-        rx_inertial: Receiver<Telemetry>,
-        rx_groundtruth: Receiver<Telemetry>,
+        receivers: PlotterReceivers,
         simulation_start: SystemTime,
     ) {
         let mut window: PistonWindow = WindowSettings::new("RustSFD", [450, 300])
@@ -105,11 +109,11 @@ impl RealTimeVisualization {
         window.set_max_fps(config::FPS as u64);
 
         let mut real_time_visualization = RealTimeVisualization::new(
-            rx_gps,
-            rx_avg,
-            rx_kalman,
-            rx_inertial,
-            rx_groundtruth,
+            receivers.rx_gps,
+            receivers.rx_avg,
+            receivers.rx_kalman,
+            receivers.rx_inertial,
+            receivers.rx_groundtruth,
             simulation_start,
         );
 
