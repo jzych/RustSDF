@@ -20,6 +20,6 @@ pub const KALMAN_GPS_SIGMA: f64 = 0.1;
 
 // Visualiziation parameters
 pub const FPS: u32 = 5;
-pub const PLOT_RANGE_WINDOW: u32 = 15;
+pub const PLOT_RANGE_WINDOW: u128 = 15;
 pub const PLOT_RANGE_Y_AXIS_MIN: f64 = -20.0;
 pub const PLOT_RANGE_Y_AXIS_MAX: f64 = 120.0;
