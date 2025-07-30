@@ -33,6 +33,9 @@ enum PlotAxis {
     Z,
 }
 
+const LIGHT_GRAY: RGBColor = RGBColor(150,150,150);
+const DARK_GREEN: RGBColor = RGBColor(0,225,0);
+
 impl std::fmt::Display for PlotAxis {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{self:?}")
@@ -195,13 +198,19 @@ impl RealTimeVisualization {
             .draw()
             .unwrap();
 
-        // self.chart_data(&self.gps_data, "GPS real data", GREEN, &mut chart);
         self.chart_data(
             &self.groundtruth_data,
             "Groundtruth",
             BLACK,
             &mut chart,
             coord,
+        );
+        self.chart_data(
+            &self.gps_data,
+            "GPS data",
+            LIGHT_GRAY,
+            &mut chart,
+            coord
         );
         self.chart_data(
             &self.avg_data,
@@ -213,11 +222,17 @@ impl RealTimeVisualization {
         self.chart_data(
             &self.inertial_data,
             "Inertial navigator",
-            MAGENTA,
+            DARK_GREEN,
             &mut chart,
             coord,
         );
-        self.chart_data(&self.kalman_data, "Kalman filter", RED, &mut chart, coord);
+        self.chart_data(
+            &self.kalman_data,
+            "Kalman filter",
+            RED,
+            &mut chart,
+            coord
+        );
 
         chart
             .configure_series_labels()
