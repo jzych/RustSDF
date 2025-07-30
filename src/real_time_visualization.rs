@@ -297,50 +297,9 @@ impl RealTimeVisualization {
 
 #[cfg(test)]
 mod tests {
-    use rand_distr::num_traits::real::{self, Real};
-
-    use crate::real_time_visualization;
-
     use super::*;
 
-    use std::sync::mpsc::{self, Sender};
-
-    // #[test]
-    // fn test_chart_data() {
-    //     let simulation_start = SystemTime::now();
-    //     let (_, rx_gps) = mpsc::channel();
-    //     let (_, rx_avg) = mpsc::channel();
-    //     let (_, rx_kalman) = mpsc::channel();
-    //     let (_, rx_inertial) = mpsc::channel();
-    //     let (_, rx_groundtruth) = mpsc::channel();
-
-    //     let mut window: PistonWindow = WindowSettings::new("RustSFD", [450, 300])
-    //         .samples(4)
-    //         .exit_on_esc(true)
-    //         .build()
-    //         .unwrap();
-
-    //     window.set_max_fps(config::FPS as u64);
-
-    //     let real_time_visualization = RealTimeVisualization::new(
-    //         rx_gps,
-    //         rx_avg,
-    //         rx_kalman,
-    //         rx_inertial,
-    //         rx_groundtruth,
-    //         simulation_start,
-    //     );
-
-    //     draw_piston_window(&mut window, |b| {
-    //         let root: DrawingArea<PistonBackend<'_, '_>, _> = b.into_drawing_area();
-    //         let mut chart = ChartBuilder::on(&root)
-    //             .build_cartesian_2d(real_time_visualization.plot_start..real_time_visualization.plot_stop, config::PLOT_RANGE_Y_AXIS_MIN..config::PLOT_RANGE_Y_AXIS_MAX)
-    //             .unwrap();
-    //         //real_time_visualization.chart_data(data, "label", YELLOW, chart, coord);
-
-    //         Ok(())
-    //     });
-    // }
+    use std::{sync::mpsc::{self, Sender}, thread::sleep, time::Duration};
 
     fn prepare_test_env() -> (
         RealTimeVisualization,
@@ -399,5 +358,35 @@ mod tests {
         let _ = tx_avg.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
         real_time_visualization.get_plot_data(PlotDataType::Avg);
         assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 1.0);
+    }
+
+    #[test]
+    fn test_update_plot_range_stop_value() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        sleep(Duration::from_millis(10));
+        let kalman_time = SystemTime::now();
+        real_time_visualization.kalman_data.pop_front();
+        real_time_visualization.kalman_data.push_back(Data { x: 33.3, y: 33.3, z: 33.3, timestamp: kalman_time});
+
+        assert_ne!(real_time_visualization.plot_stop, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+        real_time_visualization.update_plot_range();
+        assert_eq!(real_time_visualization.plot_stop, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+    }
+
+    #[test]
+    fn test_update_plot_range_start_value() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        sleep(Duration::from_millis(100));
+        let kalman_time = SystemTime::now();
+        real_time_visualization.kalman_data.pop_front();
+        real_time_visualization.kalman_data.pop_front();
+        real_time_visualization.kalman_data.push_back(Data { x: 33.3, y: 33.3, z: 33.3, timestamp: kalman_time});
+        real_time_visualization.kalman_data.push_front(Data { x: 33.3, y: 33.3, z: 33.3, timestamp: kalman_time});
+
+        assert_ne!(real_time_visualization.plot_start, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+        real_time_visualization.update_plot_range();
+        assert_eq!(real_time_visualization.plot_start, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
     }
 }
