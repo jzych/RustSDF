@@ -1,5 +1,5 @@
 use piston_window::{EventLoop, PistonWindow, WindowSettings};
-use plotters::coord::types::{RangedCoordf64, RangedCoordi128};
+use plotters::coord::types::{RangedCoordf64, RangedCoordu128};
 use plotters::coord::Shift;
 use plotters::prelude::*;
 use plotters_piston::{draw_piston_window, PistonBackend};
@@ -42,8 +42,8 @@ pub struct RealTimeVisualization {
     rx_kalman: Receiver<Telemetry>,
     rx_inertial: Receiver<Telemetry>,
     rx_groundtruth: Receiver<Telemetry>,
-    plot_start: i128,
-    plot_stop: i128,
+    plot_start: u128,
+    plot_stop: u128,
     simulation_start: SystemTime,
 }
 
@@ -58,33 +58,32 @@ impl RealTimeVisualization {
     ) -> RealTimeVisualization {
         RealTimeVisualization {
             gps_data: VecDeque::from(
-                [Data::new(); (config::PLOT_RANGE_WINDOW * config::GPS_FREQ.get()) as usize],
+                [Data::new();
+                    (config::PLOT_RANGE_WINDOW * config::GPS_FREQ.get() as u128) as usize],
             ),
             avg_data: VecDeque::from(
-                [Data::new(); (config::PLOT_RANGE_WINDOW * config::GPS_FREQ.get()) as usize],
+                [Data::new();
+                    (config::PLOT_RANGE_WINDOW * config::GPS_FREQ.get() as u128) as usize],
             ),
             kalman_data: VecDeque::from(
-                [Data::new(); (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get()) as usize],
+                [Data::new();
+                    (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get() as u128) as usize],
             ),
             inertial_data: VecDeque::from(
-                [Data::new(); (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get()) as usize],
+                [Data::new();
+                    (config::PLOT_RANGE_WINDOW * config::IMU_FREQ.get() as u128) as usize],
             ),
             groundtruth_data: VecDeque::from(
-                [Data::new(); (config::PLOT_RANGE_WINDOW * config::GENERATOR_FREQ.get()) as usize],
+                [Data::new();
+                    (config::PLOT_RANGE_WINDOW * config::GENERATOR_FREQ.get() as u128) as usize],
             ),
             rx_gps,
             rx_avg,
             rx_kalman,
             rx_inertial,
             rx_groundtruth,
-            plot_start: SystemTime::now()
-                .duration_since(simulation_start)
-                .unwrap()
-                .as_millis() as i128,
-            plot_stop: SystemTime::now()
-                .duration_since(simulation_start)
-                .unwrap()
-                .as_millis() as i128,
+            plot_start: 0,
+            plot_stop: 0,
             simulation_start,
         }
     }
@@ -230,11 +229,11 @@ impl RealTimeVisualization {
                 .timestamp
                 .duration_since(self.simulation_start)
                 .unwrap()
-                .as_millis() as i128,
+                .as_millis(),
             None => panic!("Trying to access empty buffer!"),
         };
 
-        if (self.plot_stop - self.plot_start) > (config::PLOT_RANGE_WINDOW as i128) {
+        if self.plot_stop.checked_sub(self.plot_start).unwrap() > config::PLOT_RANGE_WINDOW {
             self.plot_start = self
                 .kalman_data
                 .front()
@@ -242,7 +241,7 @@ impl RealTimeVisualization {
                 .timestamp
                 .duration_since(self.simulation_start)
                 .unwrap()
-                .as_millis() as i128;
+                .as_millis();
         }
     }
 
@@ -254,7 +253,7 @@ impl RealTimeVisualization {
         chart: &mut ChartContext<
             '_,
             PistonBackend<'_, '_>,
-            Cartesian2d<RangedCoordi128, RangedCoordf64>,
+            Cartesian2d<RangedCoordu128, RangedCoordf64>,
         >,
         coord: PlotAxis,
     ) {
@@ -265,7 +264,7 @@ impl RealTimeVisualization {
                         p.timestamp
                             .duration_since(self.simulation_start)
                             .unwrap()
-                            .as_millis() as i128,
+                            .as_millis(),
                         match coord {
                             PlotAxis::X => p.x,
                             PlotAxis::Y => p.y,
