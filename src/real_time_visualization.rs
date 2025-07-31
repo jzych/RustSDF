@@ -351,14 +351,34 @@ mod tests {
 
     #[test]
     fn test_get_plot_data_correct_input() {
-        let (mut real_time_visualization, _, tx_avg, _, _, _) =
+        let (mut real_time_visualization, tx_gps, tx_avg, tx_kalman, tx_inertial, tx_groundtruth) =
             prepare_test_env();
 
-        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 0.0);
+        assert_eq!(real_time_visualization.gps_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.avg_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.kalman_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.inertial_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.groundtruth_data.iter().last().unwrap().x, 0.0);
+
+        let _ = tx_gps.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Gps);
+        assert_eq!(real_time_visualization.gps_data.iter().last().unwrap().x, 1.0);
 
         let _ = tx_avg.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
         real_time_visualization.get_plot_data(PlotDataType::Avg);
-        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 1.0);
+        assert_eq!(real_time_visualization.avg_data.iter().last().unwrap().x, 1.0);
+
+        let _ = tx_kalman.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Kalman);
+        assert_eq!(real_time_visualization.kalman_data.iter().last().unwrap().x, 1.0);
+
+        let _ = tx_inertial.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Inertial);
+        assert_eq!(real_time_visualization.inertial_data.iter().last().unwrap().x, 1.0);
+
+        let _ = tx_groundtruth.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Groundtruth);
+        assert_eq!(real_time_visualization.groundtruth_data.iter().last().unwrap().x, 1.0);
     }
 
     #[test]
@@ -389,5 +409,16 @@ mod tests {
         assert_ne!(real_time_visualization.plot_start, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
         real_time_visualization.update_plot_range();
         assert_eq!(real_time_visualization.plot_start, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_update_plot_range_access_empty_buffer() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        real_time_visualization.kalman_data.clear();
+        assert!(real_time_visualization.kalman_data.is_empty());
+
+        real_time_visualization.update_plot_range();
     }
 }
