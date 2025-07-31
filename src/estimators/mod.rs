@@ -7,7 +7,7 @@ use crate::{
 pub mod kalman;
 pub mod inertial_navigator;
 
-pub fn initialize_state_using_gps_data(
+fn initialize_state_using_gps_data(
     telemetry: Telemetry,
     gps_samples_received: &mut u32,
     state: &mut Matrix6x1<f64>,

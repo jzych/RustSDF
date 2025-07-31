@@ -12,7 +12,6 @@ pub fn get_cycle_duration_f64(frequency: NonZeroU32) -> f64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn given_frequency_expect_cycle_duration() {
