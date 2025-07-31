@@ -35,17 +35,6 @@ pub fn initialize_state_using_gps_data(
                 state[3] = (data.x - prev_gps_data.x)/delta_time;
                 state[4] = (data.y - prev_gps_data.y)/delta_time;
                 state[5] = (data.z - prev_gps_data.z)/delta_time;
-                println!("Inertial Navigator: Initial position from GPS data: {}, {}, {}",
-                    state[0],
-                    state[1],
-                    state[2]
-                );
-                println!("Inertial Navigator: Initial velocity from GPS data: {}, {}, {}, dt = {}",
-                    state[3],
-                    state[4],
-                    state[5],
-                    delta_time,
-                );
             }
         },
     }
