@@ -301,6 +301,7 @@ mod tests {
 
     use std::{sync::mpsc::{self, Sender}, thread::sleep, time::Duration};
 
+    #[allow(clippy::type_complexity)]
     fn prepare_test_env() -> (
         RealTimeVisualization,
         Sender<Telemetry>,
