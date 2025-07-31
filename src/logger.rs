@@ -9,7 +9,7 @@ use std::{
 
 use once_cell::sync::Lazy;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct LogEntry<T> {
     pub timestamp: SystemTime,
     pub data: T,

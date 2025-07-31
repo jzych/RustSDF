@@ -6,6 +6,8 @@ use std::time::SystemTime;
 use std::{sync::mpsc::Receiver, thread::JoinHandle};
 
 use crate::config;
+use crate::logger::log;
+use crate::log_config::GENERAL_LOG;
 
 #[allow(unused)]
 pub struct Visualization;
@@ -88,7 +90,7 @@ impl Visualization {
                 groundtruth_data,
                 simulation_start,
             );
-            println!("Visualization removed");
+            log(GENERAL_LOG, "Visualization removed".to_string());
         });
         handle
     }
