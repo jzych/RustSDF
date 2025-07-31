@@ -5,6 +5,7 @@ use std::{
     time::SystemTime,
 };
 use nalgebra::{Matrix3x1, Matrix6, Matrix6x1, Matrix6x3};
+use super::initialize_state_using_gps_data;
 
 use crate::{
     config::IMU_FREQ,
@@ -79,9 +80,10 @@ impl InertialNavigator {
                 if inertial_navigator.tx.is_empty() {
                     break;
                 }
-                log(LOGGER_PREFIX, inertial_navigator_position_estimate);
+                log(INTERTIAL_NAVIGATOR_LOG, inertial_navigator_position_estimate);
+
             }
-            println!("Inertial navigator removed");
+            log(GENERAL_LOG, "Inertial navigator removed".to_string());
         })
     }   
 }

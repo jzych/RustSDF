@@ -13,6 +13,7 @@ use crate::{
     log_config::{GENERAL_LOG, KALMAN_LOG},
     utils::*,
 };
+use super::initialize_state_using_gps_data;
 
 #[derive(Debug, Copy, Clone)]
 pub struct KalmanData {
@@ -135,6 +136,14 @@ impl KalmanFilter {
     }   
 }
 
+fn max_expected_imu_interval() -> Duration {
+    Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 + KALMAN_TIMING_TOLERANCE))
+}
+
+fn min_expected_imu_interval() -> Duration {
+    Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 - KALMAN_TIMING_TOLERANCE))
+}
+
 fn telemetry_check(
     telemetry: Telemetry,
     last_imu_data_timestamp: &mut SystemTime,
@@ -145,13 +154,13 @@ fn telemetry_check(
             let imu_elapsed: Duration = current_imu_data_timestamp.duration_since(*last_imu_data_timestamp).unwrap(); 
             *last_imu_data_timestamp = current_imu_data_timestamp;
 
-            if imu_elapsed > Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 + KALMAN_TIMING_TOLERANCE)) {
+            if imu_elapsed > max_expected_imu_interval() {
                 eprintln!("Kalman: IMU data is late! Previous data obtained {}s {:03}ms ago. ",
                     imu_elapsed.as_secs(),
                     imu_elapsed.subsec_millis()
                 );
                 true
-            } else if imu_elapsed >= Duration::from_secs_f64(get_cycle_duration_f64(IMU_FREQ) * (1.0 - KALMAN_TIMING_TOLERANCE)) {
+            } else if imu_elapsed >= min_expected_imu_interval() {
                 true
             } else if imu_elapsed > Duration::from_secs_f64(0.0) {
                 eprintln!("Kalman: IMU data received too soon! Previous data obtained {}s {:03}ms ago. ",
@@ -269,6 +278,22 @@ mod test {
         let kd : KalmanData = KalmanData::new();
         approx::assert_abs_diff_eq!(kd.P[(5,1)], 0.0);
         approx::assert_abs_diff_eq!(kd.x[5], 0.0);
+    }
+
+    #[test]
+    fn test_max_expected_imu_interval() {
+        let base = get_cycle_duration_f64(IMU_FREQ);
+        let expected = base * (1.0 + KALMAN_TIMING_TOLERANCE);
+        let duration = max_expected_imu_interval();
+        approx::assert_abs_diff_eq!(duration.as_secs_f64(), expected);
+    }
+
+    #[test]
+    fn test_min_expected_imu_interval() {
+        let base = get_cycle_duration_f64(IMU_FREQ);
+        let expected = base * (1.0 - KALMAN_TIMING_TOLERANCE);
+        let duration = min_expected_imu_interval();
+        approx::assert_abs_diff_eq!(duration.as_secs_f64(), expected);
     }
 
     #[test]
