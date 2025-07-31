@@ -382,7 +382,7 @@ mod tests {
         let kalman_time = SystemTime::now();
         real_time_visualization.kalman_data.pop_front();
         real_time_visualization.kalman_data.pop_front();
-        real_time_visualization.kalman_data.push_back(Data { x: 33.3, y: 33.3, z: 33.3, timestamp: kalman_time});
+        real_time_visualization.kalman_data.push_back(Data { x: 77.7, y: 77.7, z: 77.7, timestamp: SystemTime::now()});
         real_time_visualization.kalman_data.push_front(Data { x: 33.3, y: 33.3, z: 33.3, timestamp: kalman_time});
 
         assert_ne!(real_time_visualization.plot_start, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
