@@ -21,6 +21,9 @@ use crate::{
     csv_handler::*,
 };
 
+use estimators::kalman;
+use estimators::inertial_navigator;
+
 mod average;
 mod communication_registry;
 mod config;
@@ -29,8 +32,6 @@ pub mod data;
 mod estimator_builder;
 mod gps;
 mod imu;
-mod inertial_navigator;
-mod kalman;
 mod log_config;
 mod logger;
 mod real_time_visualization;
@@ -39,6 +40,7 @@ mod trajectory_generator;
 mod utils;
 mod visualization;
 mod periodic_runner;
+mod estimators;
 
 #[allow(unused)]
 #[derive(Debug)]
