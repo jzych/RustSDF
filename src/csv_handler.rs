@@ -24,9 +24,9 @@ fn save_log_to_file<T: serde::Serialize + Send + Clone + Debug + Sync + 'static>
         .truncate(true)
         .open(path)?;
     let mut writter = Writer::from_writer(file);
-    let logged_component  = get_data::<T>(component_name);
+    let logged_component = get_data::<T>(component_name);
 
-    if let Some(data) = logged_component  {
+    if let Some(data) = logged_component {
         for entry in data {
             writter.serialize(&entry.data)?;
         }
@@ -123,6 +123,10 @@ mod tests {
         let _ = fs::remove_dir_all("test_output");
     }
 
+    fn cleanup_test_file(component_name: &str) {
+        let _ = fs::remove_file(concat_path(component_name));
+    }
+
     fn read_file_content(path: &str) -> String {
         let mut file = fs::File::open(path).unwrap();
         let mut content = String::new();
@@ -133,10 +137,14 @@ mod tests {
     #[test]
     fn test_concat_path() {
         let expected_path = PathBuf::from(OUTPUT_PATH)
-        .join(format!("{}.{}", TEST_COMPONENT.to_lowercase(), CSV_EXTENSION))
-        .to_string_lossy()
-        .into_owned();
-    
+            .join(format!(
+                "{}.{}",
+                TEST_COMPONENT.to_lowercase(),
+                CSV_EXTENSION
+            ))
+            .to_string_lossy()
+            .into_owned();
+
         let result = concat_path(TEST_COMPONENT);
 
         assert_eq!(result, expected_path);
@@ -179,5 +187,29 @@ mod tests {
 
         let result = save_log_to_file::<Data>(invalid_path.as_str(), TEST_COMPONENT);
         assert!(result.is_err());
+    }
+
+    macro_rules! test_x_log_to_file {
+        ($($name:ident : ($function:expr,$component_name:expr)),*) => {
+        $(
+            #[test]
+            fn $name() {
+                $function();
+
+                assert!(Path::new(&concat_path($component_name)).exists());
+                cleanup_test_file($component_name);
+            }
+        )*
+        }
+    }
+
+    test_x_log_to_file! {
+        test_save_general_log_to_file: (save_general_log_to_file, GENERAL_LOG),
+        test_save_gps_log_to_file: (save_gps_log_to_file, GPS_LOG),
+        test_save_groundtruth_log_to_file: (save_groundtruth_log_to_file, GROUNDTRUTH_LOG),
+        test_save_imu_log_to_file: (save_imu_log_to_file, IMU_LOG),
+        test_save_inertial_nav_to_file: (save_inertial_nav_to_file, INTERTIAL_NAVIGATOR_LOG),
+        test_save_kalman_log_to_file: (save_kalman_log_to_file, KALMAN_LOG),
+        test_save_moving_average_log_to_file: (save_moving_average_log_to_file, MOVING_AVERAGE_LOG)
     }
 }
