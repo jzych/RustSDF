@@ -48,6 +48,7 @@ fn save_log_handle<T: serde::Serialize + Send + Clone + Debug + Sync + 'static>(
     }
 }
 
+#[inline]
 fn concat_path(component_name: &str) -> String {
     let file_name = component_name.to_lowercase();
     let mut path = PathBuf::from(OUTPUT_PATH);
