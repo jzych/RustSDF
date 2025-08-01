@@ -13,10 +13,9 @@ use crate::{
     data::{Data, Telemetry},
     estimator_builder::EstimatorBuilder,
     logger::{get_data, log},
-    real_time_visualization::{PlotterReceivers, RealTimeVisualization},
     sensor_builder::SensorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
-    visualization::Visualization,
+    visualization::{PlotterReceivers, real_time_visualization::RealTimeVisualization, static_visualization::StaticVisualization},
 };
 
 use chrono::{DateTime, Local};
@@ -31,7 +30,6 @@ mod imu;
 mod inertial_navigator;
 mod kalman;
 mod logger;
-mod real_time_visualization;
 mod sensor_builder;
 mod trajectory_generator;
 mod utils;
@@ -137,7 +135,7 @@ fn start_inertial_navigator(
     }
 }
 
-fn start_visualization(
+fn start_static_visualization(
     communication_registry: &mut CommunicationRegistry,
     simulation_start: SystemTime,
 ) -> JoinHandle<()> {
@@ -152,14 +150,7 @@ fn start_visualization(
     communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
     communication_registry.register_for_input(DataSource::Groundtruth, tx_groundtruth);
 
-    Visualization::run(
-        rx_avg,
-        rx_kalman,
-        rx_gps,
-        rx_inertial,
-        rx_groundtruth,
-        simulation_start,
-    )
+    StaticVisualization::run(PlotterReceivers { rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth}, simulation_start)
 }
 
 fn start_trajectory_generator(
@@ -256,7 +247,7 @@ fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
     let (receivers, simulation_start) = register_dynamic_plot(&mut communication_registry);
-    let visu_handle = start_visualization(&mut communication_registry, simulation_start);
+    let static_visu_handle = start_static_visualization(&mut communication_registry, simulation_start);
 
     let (generated_data_handle, generator_handle) =
         start_trajectory_generator(&mut communication_registry, Arc::clone(&shutdown_trigger));
@@ -294,7 +285,7 @@ fn main() -> Result<(), Error> {
     kalman_consumer_handle.join().unwrap();
     average_consumer_handle.join().unwrap();
     inertial_consumer_handle.join().unwrap();
-    visu_handle.join().unwrap();
+    static_visu_handle.join().unwrap();
 
     let consumers = get_data::<DataSource>("Consumers");
 
