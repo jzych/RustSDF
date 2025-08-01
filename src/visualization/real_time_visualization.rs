@@ -6,39 +6,11 @@ use plotters_piston::{draw_piston_window, PistonBackend};
 
 use crate::config;
 use crate::data::{Data, Telemetry};
+use crate::visualization;
 
 use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
-
-pub struct PlotterReceivers {
-    pub rx_gps: Receiver<Telemetry>,
-    pub rx_avg: Receiver<Telemetry>,
-    pub rx_kalman: Receiver<Telemetry>,
-    pub rx_inertial: Receiver<Telemetry>,
-    pub rx_groundtruth: Receiver<Telemetry>,
-}
-
-enum PlotDataType {
-    Gps,
-    Avg,
-    Kalman,
-    Inertial,
-    Groundtruth,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum PlotAxis {
-    X,
-    Y,
-    Z,
-}
-
-impl std::fmt::Display for PlotAxis {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
 
 pub struct RealTimeVisualization {
     gps_data: VecDeque<Data>,
@@ -104,7 +76,7 @@ impl RealTimeVisualization {
         }
     }
 
-    pub fn run(receivers: PlotterReceivers, simulation_start: SystemTime) {
+    pub fn run(receivers: visualization::PlotterReceivers, simulation_start: SystemTime) {
         let mut window: PistonWindow = WindowSettings::new("RustSFD", [1280, 720])
             .samples(4)
             .exit_on_esc(true)
@@ -123,11 +95,11 @@ impl RealTimeVisualization {
         );
 
         while draw_piston_window(&mut window, |b: PistonBackend<'_, '_>| {
-            real_time_visualization.get_plot_data(PlotDataType::Gps);
-            real_time_visualization.get_plot_data(PlotDataType::Avg);
-            real_time_visualization.get_plot_data(PlotDataType::Kalman);
-            real_time_visualization.get_plot_data(PlotDataType::Inertial);
-            real_time_visualization.get_plot_data(PlotDataType::Groundtruth);
+            real_time_visualization.get_plot_data(visualization::PlotDataType::Gps);
+            real_time_visualization.get_plot_data(visualization::PlotDataType::Avg);
+            real_time_visualization.get_plot_data(visualization::PlotDataType::Kalman);
+            real_time_visualization.get_plot_data(visualization::PlotDataType::Inertial);
+            real_time_visualization.get_plot_data(visualization::PlotDataType::Groundtruth);
             real_time_visualization.draw(b);
 
             Ok(())
@@ -136,13 +108,13 @@ impl RealTimeVisualization {
         {}
     }
 
-    fn get_plot_data(&mut self, plot_data_type: PlotDataType) {
+    fn get_plot_data(&mut self, plot_data_type: visualization::PlotDataType) {
         let (rx, rx_data) = match plot_data_type {
-            PlotDataType::Gps => (&self.rx_gps, &mut self.gps_data),
-            PlotDataType::Avg => (&self.rx_avg, &mut self.avg_data),
-            PlotDataType::Kalman => (&self.rx_kalman, &mut self.kalman_data),
-            PlotDataType::Inertial => (&self.rx_inertial, &mut self.inertial_data),
-            PlotDataType::Groundtruth => (&self.rx_groundtruth, &mut self.groundtruth_data),
+            visualization::PlotDataType::Gps => (&self.rx_gps, &mut self.gps_data),
+            visualization::PlotDataType::Avg => (&self.rx_avg, &mut self.avg_data),
+            visualization::PlotDataType::Kalman => (&self.rx_kalman, &mut self.kalman_data),
+            visualization::PlotDataType::Inertial => (&self.rx_inertial, &mut self.inertial_data),
+            visualization::PlotDataType::Groundtruth => (&self.rx_groundtruth, &mut self.groundtruth_data),
         };
 
         while let Ok(data) = rx.try_recv() {
@@ -172,15 +144,15 @@ impl RealTimeVisualization {
 
         self.update_plot_range();
 
-        self.draw_coordinate(lower_0, PlotAxis::X);
-        self.draw_coordinate(lower_1, PlotAxis::Y);
-        self.draw_coordinate(lower_2, PlotAxis::Z);
+        self.draw_coordinate(lower_0, visualization::PlotAxis::X);
+        self.draw_coordinate(lower_1, visualization::PlotAxis::Y);
+        self.draw_coordinate(lower_2, visualization::PlotAxis::Z);
     }
 
     fn draw_coordinate(
         &mut self,
         root: DrawingArea<PistonBackend<'_, '_>, Shift>,
-        coord: PlotAxis,
+        coord: visualization::PlotAxis,
     ) {
         let mut chart = ChartBuilder::on(&root)
             .x_label_area_size(40)
@@ -275,7 +247,7 @@ impl RealTimeVisualization {
             PistonBackend<'_, '_>,
             Cartesian2d<RangedCoordu128, RangedCoordf64>,
         >,
-        coord: PlotAxis,
+        coord: visualization::PlotAxis,
     ) {
         chart
             .draw_series(LineSeries::new(
@@ -286,9 +258,9 @@ impl RealTimeVisualization {
                             .unwrap()
                             .as_millis(),
                         match coord {
-                            PlotAxis::X => p.x,
-                            PlotAxis::Y => p.y,
-                            PlotAxis::Z => p.z,
+                            visualization::PlotAxis::X => p.x,
+                            visualization::PlotAxis::Y => p.y,
+                            visualization::PlotAxis::Z => p.z,
                         },
                     )
                 }),
