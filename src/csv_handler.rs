@@ -190,7 +190,7 @@ mod tests {
     }
 
     macro_rules! test_x_log_to_file {
-        ($($name:ident : ($function:expr,$component_name:expr)),*) => {
+        ($($name:ident : ($function:expr,$component_name:expr)),+) => {
         $(
             #[test]
             fn $name() {
@@ -199,7 +199,7 @@ mod tests {
                 assert!(Path::new(&concat_path($component_name)).exists());
                 cleanup_test_file($component_name);
             }
-        )*
+        )+
         }
     }
 
