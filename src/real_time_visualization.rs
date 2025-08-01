@@ -294,3 +294,131 @@ impl RealTimeVisualization {
             .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::{sync::mpsc::{self, Sender}, thread::sleep, time::Duration};
+
+    #[allow(clippy::type_complexity)]
+    fn prepare_test_env() -> (
+        RealTimeVisualization,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+    ) {
+        let simulation_start = SystemTime::now();
+        let (tx_gps, rx_gps) = mpsc::channel();
+        let (tx_avg, rx_avg) = mpsc::channel();
+        let (tx_kalman, rx_kalman) = mpsc::channel();
+        let (tx_inertial, rx_inertial) = mpsc::channel();
+        let (tx_groundtruth, rx_groundtruth) = mpsc::channel();
+
+        let real_time_visualization = RealTimeVisualization::new(
+            rx_gps,
+            rx_avg,
+            rx_kalman,
+            rx_inertial,
+            rx_groundtruth,
+            simulation_start,
+        );
+
+        (
+            real_time_visualization,
+            tx_gps,
+            tx_avg,
+            tx_kalman,
+            tx_inertial,
+            tx_groundtruth,
+        )
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_get_plot_data_wrong_input() {
+        let (mut real_time_visualization, _, tx_avg, _, _, _) =
+            prepare_test_env();
+
+        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 0.0);
+
+        let _ = tx_avg.send(Telemetry::Acceleration(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Avg);
+        assert!(real_time_visualization.avg_data.iter().last().unwrap().x == 1.0);
+    }
+
+    #[test]
+    fn test_get_plot_data_correct_input() {
+        let (mut real_time_visualization, tx_gps, tx_avg, tx_kalman, tx_inertial, tx_groundtruth) =
+            prepare_test_env();
+
+        assert_eq!(real_time_visualization.gps_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.avg_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.kalman_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.inertial_data.iter().last().unwrap().x, 0.0);
+        assert_eq!(real_time_visualization.groundtruth_data.iter().last().unwrap().x, 0.0);
+
+        let _ = tx_gps.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Gps);
+        assert_eq!(real_time_visualization.gps_data.iter().last().unwrap().x, 1.0);
+
+        let _ = tx_avg.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Avg);
+        assert_eq!(real_time_visualization.avg_data.iter().last().unwrap().x, 1.0);
+
+        let _ = tx_kalman.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Kalman);
+        assert_eq!(real_time_visualization.kalman_data.iter().last().unwrap().x, 1.0);
+
+        let _ = tx_inertial.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Inertial);
+        assert_eq!(real_time_visualization.inertial_data.iter().last().unwrap().x, 1.0);
+
+        let _ = tx_groundtruth.send(Telemetry::Position(Data{x: 1.0, y: 1.0, z: 1.0, timestamp: SystemTime::now()}));
+        real_time_visualization.get_plot_data(PlotDataType::Groundtruth);
+        assert_eq!(real_time_visualization.groundtruth_data.iter().last().unwrap().x, 1.0);
+    }
+
+    #[test]
+    fn test_update_plot_range_stop_value() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        sleep(Duration::from_millis(10));
+        let kalman_time = SystemTime::now();
+        real_time_visualization.kalman_data.pop_front();
+        real_time_visualization.kalman_data.push_back(Data { x: 33.3, y: 33.3, z: 33.3, timestamp: kalman_time});
+
+        assert_ne!(real_time_visualization.plot_stop, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+        real_time_visualization.update_plot_range();
+        assert_eq!(real_time_visualization.plot_stop, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+    }
+
+    #[test]
+    fn test_update_plot_range_start_value() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        sleep(Duration::from_millis(100));
+        let kalman_time = SystemTime::now();
+        real_time_visualization.kalman_data.pop_front();
+        real_time_visualization.kalman_data.pop_front();
+        real_time_visualization.kalman_data.push_back(Data { x: 77.7, y: 77.7, z: 77.7, timestamp: SystemTime::now()});
+        real_time_visualization.kalman_data.push_front(Data { x: 33.3, y: 33.3, z: 33.3, timestamp: kalman_time});
+
+        assert_ne!(real_time_visualization.plot_start, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+        real_time_visualization.update_plot_range();
+        assert_eq!(real_time_visualization.plot_start, kalman_time.duration_since(real_time_visualization.simulation_start).unwrap().as_millis());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_update_plot_range_access_empty_buffer() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        real_time_visualization.kalman_data.clear();
+        assert!(real_time_visualization.kalman_data.is_empty());
+
+        real_time_visualization.update_plot_range();
+    }
+}
