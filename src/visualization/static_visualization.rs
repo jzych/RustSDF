@@ -1,12 +1,19 @@
-use crate::data::Telemetry;
+use std::{
+    sync::mpsc::Receiver,
+    collections::VecDeque,
+    time::SystemTime,
+    thread,
+    thread::JoinHandle,
+};
+
 use plotters::prelude::*;
-use std::collections::VecDeque;
-use std::thread;
-use std::time::SystemTime;
-use std::{sync::mpsc::Receiver, thread::JoinHandle};
 
-use crate::visualization::{self, Visualization};
+use crate::{
+    data::Telemetry,
+    visualization::{self, Visualization}
+};
 
+#[derive(Debug)]
 pub struct StaticVisualization {
     visualization: Visualization,
 }
@@ -126,60 +133,176 @@ impl StaticVisualization {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    use std::{
+        sync::mpsc::{self, Sender}, path::Path
+    };
 
-//     use std::path::Path;
-//     use std::time::SystemTime;
+    use crate::{
+        Data,
+        visualization,
+    };
 
-//     #[test]
-//     fn test_select_xyz() {
-//         let data = Data {
-//             x: 234.5,
-//             y: 555.1,
-//             z: 33.3,
-//             timestamp: SystemTime::now(),
-//         };
+    fn prepare_test_env() -> (
+        StaticVisualization,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+        Sender<Telemetry>,
+    ) {
+        let simulation_start = SystemTime::now();
+        let (tx_gps, rx_gps) = mpsc::channel();
+        let (tx_avg, rx_avg) = mpsc::channel();
+        let (tx_kalman, rx_kalman) = mpsc::channel();
+        let (tx_inertial, rx_inertial) = mpsc::channel();
+        let (tx_groundtruth, rx_groundtruth) = mpsc::channel();
 
-//         approx::assert_abs_diff_eq!(select_xyz("x", data), 234.5);
-//         approx::assert_abs_diff_eq!(select_xyz("y", data), 555.1);
-//         approx::assert_abs_diff_eq!(select_xyz("z", data), 33.3);
-//     }
+        let static_visualization = StaticVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start);
 
-//     #[test]
-//     #[should_panic]
-//     fn test_select_xyz_wrong_input() {
-//         let data = Data {
-//             x: 234.5,
-//             y: 555.1,
-//             z: 33.3,
-//             timestamp: SystemTime::now(),
-//         };
+        (
+            static_visualization,
+            tx_gps,
+            tx_avg,
+            tx_kalman,
+            tx_inertial,
+            tx_groundtruth,
+        )
+    }
 
-//         approx::assert_abs_diff_eq!(select_xyz("dariajestsuper", data), 33.3);
-//     }
+    #[test]
+    fn test_plot_file_generated() {
+        let (mut static_visualization, _, _, _, _, _) = prepare_test_env();
+        static_visualization.draw();
 
-//     #[test]
-//     fn test_plot_file_generated() {
-//         let simulation_time = SystemTime::now();
+        let path = Path::new("output/plot_gps_avg_kalman.png");
+        assert!(path.exists());
+    }    
 
-//         let avg_data = vec![Data::new()];
-//         let kalman_data = vec![Data::new()];
-//         let gps_data = vec![Data::new()];
-//         let inertial_data = vec![Data::new()];
-//         let groundtruth_data = vec![Data::new()];
+    #[test]
+    #[should_panic]
+    fn test_get_plot_data_wrong_input() {
+        let (mut static_visualization, _, tx_avg, _, _, _) = prepare_test_env();
 
-//         draw(
-//             avg_data,
-//             kalman_data,
-//             gps_data,
-//             inertial_data,
-//             groundtruth_data,
-//             simulation_time,
-//         );
+        assert!(static_visualization.visualization.avg_data.iter().last().unwrap().x == 0.0);
 
-//         let path = Path::new("output/plot_gps_avg_kalman.png");
-//         assert!(path.exists());
-//     }
-// }
+        let _ = tx_avg.send(Telemetry::Acceleration(Data {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+            timestamp: SystemTime::now(),
+        }));
+        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Avg, visualization::VisualizationType::Static);
+        assert!(static_visualization.visualization.avg_data.iter().last().unwrap().x == 1.0);
+    }
+
+    #[test]
+    fn test_get_plot_data_correct_input() {
+        let (mut static_visualization, tx_gps, tx_avg, tx_kalman, tx_inertial, tx_groundtruth) =
+            prepare_test_env();
+
+        assert_eq!(
+            static_visualization.visualization.gps_data.iter().last().unwrap().x,
+            0.0
+        );
+        assert_eq!(
+            static_visualization.visualization.avg_data.iter().last().unwrap().x,
+            0.0
+        );
+        assert_eq!(
+            static_visualization.visualization.kalman_data.iter().last().unwrap().x,
+            0.0
+        );
+        assert_eq!(
+            static_visualization
+                .visualization.inertial_data
+                .iter()
+                .last()
+                .unwrap()
+                .x,
+            0.0
+        );
+        assert_eq!(
+            static_visualization
+                .visualization.groundtruth_data
+                .iter()
+                .last()
+                .unwrap()
+                .x,
+            0.0
+        );
+
+        let _ = tx_gps.send(Telemetry::Position(Data {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+            timestamp: SystemTime::now(),
+        }));
+        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Gps, visualization::VisualizationType::Static);
+        assert_eq!(
+            static_visualization.visualization.gps_data.iter().last().unwrap().x,
+            1.0
+        );
+
+        let _ = tx_avg.send(Telemetry::Position(Data {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+            timestamp: SystemTime::now(),
+        }));
+        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Avg, visualization::VisualizationType::Static);
+        assert_eq!(
+            static_visualization.visualization.avg_data.iter().last().unwrap().x,
+            1.0
+        );
+
+        let _ = tx_kalman.send(Telemetry::Position(Data {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+            timestamp: SystemTime::now(),
+        }));
+        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Kalman, visualization::VisualizationType::Static);
+        assert_eq!(
+            static_visualization.visualization.kalman_data.iter().last().unwrap().x,
+            1.0
+        );
+
+        let _ = tx_inertial.send(Telemetry::Position(Data {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+            timestamp: SystemTime::now(),
+        }));
+        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Inertial, visualization::VisualizationType::Static);
+        assert_eq!(
+            static_visualization
+                .visualization.inertial_data
+                .iter()
+                .last()
+                .unwrap()
+                .x,
+            1.0
+        );
+
+        let _ = tx_groundtruth.send(Telemetry::Position(Data {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+            timestamp: SystemTime::now(),
+        }));
+        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Groundtruth, visualization::VisualizationType::Static);
+        assert_eq!(
+            static_visualization
+                .visualization.groundtruth_data
+                .iter()
+                .last()
+                .unwrap()
+                .x,
+            1.0
+        );
+    }
+}
