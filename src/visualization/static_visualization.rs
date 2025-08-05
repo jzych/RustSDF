@@ -61,20 +61,21 @@ impl StaticVisualization {
         let handle = thread::spawn(move || {
             static_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Gps);
+                .get_plot_data(visualization::PlotDataType::Gps, visualization::VisualizationType::Static);
             static_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Avg);
+                .get_plot_data(visualization::PlotDataType::Avg, visualization::VisualizationType::Static);
             static_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Kalman);
+                .get_plot_data(visualization::PlotDataType::Kalman, visualization::VisualizationType::Static);
             static_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Inertial);
+                .get_plot_data(visualization::PlotDataType::Inertial, visualization::VisualizationType::Static);
             static_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Groundtruth);
-            static_visualization.update_plot_time_range();
+                .get_plot_data(visualization::PlotDataType::Groundtruth, visualization::VisualizationType::Static);
+
+            static_visualization.update_plot_range();
             static_visualization.draw();
             println!("Static Visualization removed");
         });
@@ -102,7 +103,7 @@ impl StaticVisualization {
             .draw_coordinate(lower_2, visualization::PlotAxis::Z);
     }
 
-    fn update_plot_time_range(&mut self) {
+    fn update_plot_range(&mut self) {
         self.visualization.plot_start = self
             .visualization
             .gps_data

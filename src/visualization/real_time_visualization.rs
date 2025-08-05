@@ -85,19 +85,19 @@ impl RealTimeVisualization {
         while draw_piston_window(&mut window, |b: PistonBackend<'_, '_>| {
             real_time_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Gps);
+                .get_plot_data(visualization::PlotDataType::Gps, visualization::VisualizationType::Dynamic);
             real_time_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Avg);
+                .get_plot_data(visualization::PlotDataType::Avg, visualization::VisualizationType::Dynamic);
             real_time_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Kalman);
+                .get_plot_data(visualization::PlotDataType::Kalman, visualization::VisualizationType::Dynamic);
             real_time_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Inertial);
+                .get_plot_data(visualization::PlotDataType::Inertial, visualization::VisualizationType::Dynamic);
             real_time_visualization
                 .visualization
-                .get_plot_data(visualization::PlotDataType::Groundtruth);
+                .get_plot_data(visualization::PlotDataType::Groundtruth, visualization::VisualizationType::Dynamic);
             real_time_visualization.draw(b);
 
             Ok(())

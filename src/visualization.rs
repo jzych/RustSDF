@@ -2,6 +2,8 @@ pub mod real_time_visualization;
 pub mod static_visualization;
 
 use crate::config;
+use crate::StaticVisualization;
+use crate::RealTimeVisualization;
 use crate::data::{Data, Telemetry};
 use plotters::coord::types::{RangedCoordf64, RangedCoordu128};
 use plotters::coord::Shift;
@@ -11,8 +13,8 @@ use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
 enum VisualizationType {
-    Static(Visualization),
-    Dynamic(Visualization),
+    Static,
+    Dynamic,
 }
 
 pub struct PlotterReceivers {
@@ -44,18 +46,6 @@ impl std::fmt::Display for PlotAxis {
     }
 }
 
-trait VisualizationOperation {
-    fn new(
-        rx_gps: Receiver<Telemetry>,
-        rx_avg: Receiver<Telemetry>,
-        rx_kalman: Receiver<Telemetry>,
-        rx_inertial: Receiver<Telemetry>,
-        rx_groundtruth: Receiver<Telemetry>,
-        simulation_start: SystemTime,
-    );
-    fn run(receivers: PlotterReceivers, simulation_start: SystemTime);
-}
-
 pub struct Visualization {
     gps_data: VecDeque<Data>,
     avg_data: VecDeque<Data>,
@@ -73,7 +63,7 @@ pub struct Visualization {
 }
 
 impl Visualization {
-    fn get_plot_data(&mut self, plot_data_type: PlotDataType) {
+    fn get_plot_data(&mut self, plot_data_type: PlotDataType, visualization_type: VisualizationType) {
         let (rx, rx_data) = match plot_data_type {
             PlotDataType::Gps => (&self.rx_gps, &mut self.gps_data),
             PlotDataType::Avg => (&self.rx_avg, &mut self.avg_data),
@@ -82,17 +72,48 @@ impl Visualization {
             PlotDataType::Groundtruth => (&self.rx_groundtruth, &mut self.groundtruth_data),
         };
 
-        while let Ok(data) = rx.try_recv() {
-            match data {
-                Telemetry::Position(d) => {
-                    rx_data.pop_front();
-                    rx_data.push_back(d);
+        match visualization_type {
+            VisualizationType::Static => {
+                while let Ok(data) = rx.recv() {
+                    match data {
+                        Telemetry::Position(d) => {
+                            rx_data.push_back(d);
+                        }
+                        Telemetry::Acceleration(_) => {
+                            panic!("Acceleration should not be passed as an input!");
+                        }
+                    }
                 }
-                Telemetry::Acceleration(_) => {
-                    panic!("Acceleration should not be passed as an input!");
+            }
+            VisualizationType::Dynamic => {
+                while let Ok(data) = rx.try_recv() {
+                    match data {
+                        Telemetry::Position(d) => {
+                            rx_data.pop_front();
+                            rx_data.push_back(d);
+                        }
+                        Telemetry::Acceleration(_) => {
+                            panic!("Acceleration should not be passed as an input!");
+                        }
+                    }
                 }
             }
         }
+
+        // while let Ok(data) = match visualization_type {
+        //     VisualizationType::Static => rx.recv().unwrap(),
+        //     VisualizationType::Dynamic => rx.try_recv().unwrap(),
+        // } {
+        //     match data {
+        //         Telemetry::Position(d) => {
+        //             rx_data.pop_front();
+        //             rx_data.push_back(d);
+        //         }
+        //         Telemetry::Acceleration(_) => {
+        //             panic!("Acceleration should not be passed as an input!");
+        //         }
+        //     }
+        // }
     }
 
     fn draw_coordinate<DB>(&mut self, root: DrawingArea<DB, Shift>, coord: PlotAxis)
@@ -195,6 +216,19 @@ impl Visualization {
     }
 }
 
+// trait VisualizationOperation {
+//     fn new(
+//         rx_gps: Receiver<Telemetry>,
+//         rx_avg: Receiver<Telemetry>,
+//         rx_kalman: Receiver<Telemetry>,
+//         rx_inertial: Receiver<Telemetry>,
+//         rx_groundtruth: Receiver<Telemetry>,
+//         simulation_start: SystemTime,
+//     );
+//     fn run(receivers: PlotterReceivers, simulation_start: SystemTime);
+//     fn update_plot_range(&mut self);
+// }
+
 // impl VisualizationOperation for VisualizationType {
 //     fn new(
 //             rx_gps: Receiver<Telemetry>,
@@ -205,8 +239,8 @@ impl Visualization {
 //             simulation_start: SystemTime,
 //         ) {
 //         match self {
-//             VisualizationType::Static(Visualization) => StaticVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start),
-//             VisualizationType::Dynamic(Visualization) => RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start),
+//             VisualizationType::Static(visualization) => StaticVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start),
+//             VisualizationType::Dynamic(visualization) => RealTimeVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start),
 //         }
 //     }
 // }
