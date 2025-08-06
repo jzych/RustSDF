@@ -168,6 +168,7 @@ mod tests {
 
     use crate::{visualization, Data};
 
+    #[allow(clippy::type_complexity)]
     fn prepare_test_env() -> (
         RealTimeVisualization,
         Sender<Telemetry>,
