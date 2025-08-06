@@ -83,7 +83,7 @@ impl Visualization {
 
         match visualization_type {
             VisualizationType::Static => {
-                while let Ok(data) = rx.recv() {
+                for data in rx {
                     match data {
                         Telemetry::Position(d) => {
                             rx_data.push_back(d);

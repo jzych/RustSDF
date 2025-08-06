@@ -1,16 +1,12 @@
 use std::{
-    sync::mpsc::Receiver,
-    collections::VecDeque,
-    time::SystemTime,
-    thread,
-    thread::JoinHandle,
+    collections::VecDeque, sync::mpsc::Receiver, thread, thread::JoinHandle, time::SystemTime,
 };
 
 use plotters::prelude::*;
 
 use crate::{
     data::Telemetry,
-    visualization::{self, Visualization}
+    visualization::{self, Visualization},
 };
 
 #[derive(Debug)]
@@ -66,21 +62,26 @@ impl StaticVisualization {
         );
 
         let handle = thread::spawn(move || {
-            static_visualization
-                .visualization
-                .get_plot_data(visualization::PlotDataType::Gps, visualization::VisualizationType::Static);
-            static_visualization
-                .visualization
-                .get_plot_data(visualization::PlotDataType::Avg, visualization::VisualizationType::Static);
-            static_visualization
-                .visualization
-                .get_plot_data(visualization::PlotDataType::Kalman, visualization::VisualizationType::Static);
-            static_visualization
-                .visualization
-                .get_plot_data(visualization::PlotDataType::Inertial, visualization::VisualizationType::Static);
-            static_visualization
-                .visualization
-                .get_plot_data(visualization::PlotDataType::Groundtruth, visualization::VisualizationType::Static);
+            static_visualization.visualization.get_plot_data(
+                visualization::PlotDataType::Gps,
+                visualization::VisualizationType::Static,
+            );
+            static_visualization.visualization.get_plot_data(
+                visualization::PlotDataType::Avg,
+                visualization::VisualizationType::Static,
+            );
+            static_visualization.visualization.get_plot_data(
+                visualization::PlotDataType::Kalman,
+                visualization::VisualizationType::Static,
+            );
+            static_visualization.visualization.get_plot_data(
+                visualization::PlotDataType::Inertial,
+                visualization::VisualizationType::Static,
+            );
+            static_visualization.visualization.get_plot_data(
+                visualization::PlotDataType::Groundtruth,
+                visualization::VisualizationType::Static,
+            );
 
             static_visualization.update_plot_range();
             static_visualization.draw();
@@ -136,15 +137,15 @@ impl StaticVisualization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use std::{
-        sync::mpsc::{self, Sender}, path::Path
+        path::Path,
+        sync::mpsc::{self, Sender},
+        thread::sleep,
+        time::Duration,
     };
 
-    use crate::{
-        Data,
-        visualization,
-    };
+    use crate::{visualization, Data};
 
     fn prepare_test_env() -> (
         StaticVisualization,
@@ -161,7 +162,14 @@ mod tests {
         let (tx_inertial, rx_inertial) = mpsc::channel();
         let (tx_groundtruth, rx_groundtruth) = mpsc::channel();
 
-        let static_visualization = StaticVisualization::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth, simulation_start);
+        let static_visualization = StaticVisualization::new(
+            rx_gps,
+            rx_avg,
+            rx_kalman,
+            rx_inertial,
+            rx_groundtruth,
+            simulation_start,
+        );
 
         (
             static_visualization,
@@ -180,14 +188,23 @@ mod tests {
 
         let path = Path::new("output/plot_gps_avg_kalman.png");
         assert!(path.exists());
-    }    
+    }
 
     #[test]
     #[should_panic]
     fn test_get_plot_data_wrong_input() {
         let (mut static_visualization, _, tx_avg, _, _, _) = prepare_test_env();
 
-        assert!(static_visualization.visualization.avg_data.iter().last().unwrap().x == 0.0);
+        assert!(
+            static_visualization
+                .visualization
+                .avg_data
+                .iter()
+                .last()
+                .unwrap()
+                .x
+                == 0.0
+        );
 
         let _ = tx_avg.send(Telemetry::Acceleration(Data {
             x: 1.0,
@@ -195,8 +212,20 @@ mod tests {
             z: 1.0,
             timestamp: SystemTime::now(),
         }));
-        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Avg, visualization::VisualizationType::Static);
-        assert!(static_visualization.visualization.avg_data.iter().last().unwrap().x == 1.0);
+        static_visualization.visualization.get_plot_data(
+            visualization::PlotDataType::Avg,
+            visualization::VisualizationType::Static,
+        );
+        assert!(
+            static_visualization
+                .visualization
+                .avg_data
+                .iter()
+                .last()
+                .unwrap()
+                .x
+                == 1.0
+        );
     }
 
     #[test]
@@ -204,36 +233,11 @@ mod tests {
         let (mut static_visualization, tx_gps, tx_avg, tx_kalman, tx_inertial, tx_groundtruth) =
             prepare_test_env();
 
-        assert_eq!(
-            static_visualization.visualization.gps_data.iter().last().unwrap().x,
-            0.0
-        );
-        assert_eq!(
-            static_visualization.visualization.avg_data.iter().last().unwrap().x,
-            0.0
-        );
-        assert_eq!(
-            static_visualization.visualization.kalman_data.iter().last().unwrap().x,
-            0.0
-        );
-        assert_eq!(
-            static_visualization
-                .visualization.inertial_data
-                .iter()
-                .last()
-                .unwrap()
-                .x,
-            0.0
-        );
-        assert_eq!(
-            static_visualization
-                .visualization.groundtruth_data
-                .iter()
-                .last()
-                .unwrap()
-                .x,
-            0.0
-        );
+        assert_eq!(static_visualization.visualization.gps_data.len(), 0);
+        assert_eq!(static_visualization.visualization.avg_data.len(), 0);
+        assert_eq!(static_visualization.visualization.kalman_data.len(), 0);
+        assert_eq!(static_visualization.visualization.inertial_data.len(), 0);
+        assert_eq!(static_visualization.visualization.groundtruth_data.len(), 0);
 
         let _ = tx_gps.send(Telemetry::Position(Data {
             x: 1.0,
@@ -241,9 +245,19 @@ mod tests {
             z: 1.0,
             timestamp: SystemTime::now(),
         }));
-        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Gps, visualization::VisualizationType::Static);
+        drop(tx_gps);
+        static_visualization.visualization.get_plot_data(
+            visualization::PlotDataType::Gps,
+            visualization::VisualizationType::Static,
+        );
         assert_eq!(
-            static_visualization.visualization.gps_data.iter().last().unwrap().x,
+            static_visualization
+                .visualization
+                .gps_data
+                .iter()
+                .last()
+                .unwrap()
+                .x,
             1.0
         );
 
@@ -253,9 +267,19 @@ mod tests {
             z: 1.0,
             timestamp: SystemTime::now(),
         }));
-        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Avg, visualization::VisualizationType::Static);
+        drop(tx_avg);
+        static_visualization.visualization.get_plot_data(
+            visualization::PlotDataType::Avg,
+            visualization::VisualizationType::Static,
+        );
         assert_eq!(
-            static_visualization.visualization.avg_data.iter().last().unwrap().x,
+            static_visualization
+                .visualization
+                .avg_data
+                .iter()
+                .last()
+                .unwrap()
+                .x,
             1.0
         );
 
@@ -265,9 +289,19 @@ mod tests {
             z: 1.0,
             timestamp: SystemTime::now(),
         }));
-        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Kalman, visualization::VisualizationType::Static);
+        drop(tx_kalman);
+        static_visualization.visualization.get_plot_data(
+            visualization::PlotDataType::Kalman,
+            visualization::VisualizationType::Static,
+        );
         assert_eq!(
-            static_visualization.visualization.kalman_data.iter().last().unwrap().x,
+            static_visualization
+                .visualization
+                .kalman_data
+                .iter()
+                .last()
+                .unwrap()
+                .x,
             1.0
         );
 
@@ -277,10 +311,15 @@ mod tests {
             z: 1.0,
             timestamp: SystemTime::now(),
         }));
-        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Inertial, visualization::VisualizationType::Static);
+        drop(tx_inertial);
+        static_visualization.visualization.get_plot_data(
+            visualization::PlotDataType::Inertial,
+            visualization::VisualizationType::Static,
+        );
         assert_eq!(
             static_visualization
-                .visualization.inertial_data
+                .visualization
+                .inertial_data
                 .iter()
                 .last()
                 .unwrap()
@@ -294,15 +333,146 @@ mod tests {
             z: 1.0,
             timestamp: SystemTime::now(),
         }));
-        static_visualization.visualization.get_plot_data(visualization::PlotDataType::Groundtruth, visualization::VisualizationType::Static);
+        drop(tx_groundtruth);
+        static_visualization.visualization.get_plot_data(
+            visualization::PlotDataType::Groundtruth,
+            visualization::VisualizationType::Static,
+        );
         assert_eq!(
             static_visualization
-                .visualization.groundtruth_data
+                .visualization
+                .groundtruth_data
                 .iter()
                 .last()
                 .unwrap()
                 .x,
             1.0
+        );
+    }
+
+    #[test]
+    fn test_update_plot_range_start_value() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        sleep(Duration::from_millis(100));
+        let gps_time = SystemTime::now();
+
+        real_time_visualization
+            .visualization
+            .gps_data
+            .push_front(Data {
+                x: 77.7,
+                y: 77.7,
+                z: 77.7,
+                timestamp: gps_time,
+            });
+
+        real_time_visualization
+            .visualization
+            .gps_data
+            .push_back(Data {
+                x: 33.3,
+                y: 33.3,
+                z: 33.3,
+                timestamp: SystemTime::now(),
+            });
+
+        assert_eq!(
+            real_time_visualization
+                .visualization
+                .gps_data
+                .front()
+                .unwrap()
+                .x,
+            77.7
+        );
+        assert_eq!(
+            real_time_visualization
+                .visualization
+                .gps_data
+                .back()
+                .unwrap()
+                .x,
+            33.3
+        );
+
+        assert_ne!(
+            real_time_visualization.visualization.plot_start,
+            gps_time
+                .duration_since(real_time_visualization.visualization.simulation_start)
+                .unwrap()
+                .as_millis()
+        );
+        real_time_visualization.update_plot_range();
+        assert_eq!(
+            real_time_visualization.visualization.plot_start,
+            gps_time
+                .duration_since(real_time_visualization.visualization.simulation_start)
+                .unwrap()
+                .as_millis()
+        );
+    }
+
+    #[test]
+    fn test_update_plot_range_stop_value() {
+        let (mut real_time_visualization, _, _, _, _, _) = prepare_test_env();
+
+        sleep(Duration::from_millis(100));
+        let gps_time = SystemTime::now();
+
+        real_time_visualization
+            .visualization
+            .gps_data
+            .push_back(Data {
+                x: 77.7,
+                y: 77.7,
+                z: 77.7,
+                timestamp: gps_time,
+            });
+
+        real_time_visualization
+            .visualization
+            .gps_data
+            .push_front(Data {
+                x: 33.3,
+                y: 33.3,
+                z: 33.3,
+                timestamp: SystemTime::now(),
+            });
+
+        assert_eq!(
+            real_time_visualization
+                .visualization
+                .gps_data
+                .front()
+                .unwrap()
+                .x,
+            33.3
+        );
+        assert_eq!(
+            real_time_visualization
+                .visualization
+                .gps_data
+                .back()
+                .unwrap()
+                .x,
+            77.7
+        );
+
+        assert_ne!(
+            real_time_visualization.visualization.plot_stop,
+            gps_time
+                .duration_since(real_time_visualization.visualization.simulation_start)
+                .unwrap()
+                .as_millis()
+        );
+        real_time_visualization.update_plot_range();
+        assert_eq!(
+            real_time_visualization.visualization.plot_stop,
+            gps_time
+                .duration_since(real_time_visualization.visualization.simulation_start)
+                .unwrap()
+                .as_millis()
         );
     }
 }
