@@ -237,7 +237,7 @@ fn main() -> Result<(), Error> {
     kalman_handle.join().unwrap();
     avg_handle.join().unwrap();
     inertial_navigator_handle.join().unwrap();
-    visu_handle.join().unwrap();
+    static_visu_handle.join().unwrap();
 
     save_logs_to_file();
 

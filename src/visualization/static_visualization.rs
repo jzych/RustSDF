@@ -6,6 +6,8 @@ use plotters::prelude::*;
 
 use crate::{
     data::Telemetry,
+    logger::log,
+    log_config::GENERAL_LOG,
     visualization::{self, Visualization},
 };
 
@@ -61,7 +63,7 @@ impl StaticVisualization {
             simulation_start,
         );
 
-        let handle = thread::spawn(move || {
+        thread::spawn(move || {
             static_visualization.visualization.get_plot_data(
                 visualization::PlotDataType::Gps,
                 visualization::VisualizationType::Static,
@@ -85,9 +87,8 @@ impl StaticVisualization {
 
             static_visualization.update_plot_range();
             static_visualization.draw();
-            println!("Static Visualization removed");
-        });
-        handle
+            log(GENERAL_LOG, "Static visualization removed".to_string());
+        })
     }
 
     fn draw(&mut self) {
