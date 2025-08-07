@@ -21,14 +21,6 @@ enum VisualizationType {
     Dynamic,
 }
 
-pub struct PlotterReceivers {
-    pub rx_gps: Receiver<Telemetry>,
-    pub rx_avg: Receiver<Telemetry>,
-    pub rx_kalman: Receiver<Telemetry>,
-    pub rx_inertial: Receiver<Telemetry>,
-    pub rx_groundtruth: Receiver<Telemetry>,
-}
-
 enum PlotDataType {
     Gps,
     Avg,
@@ -47,6 +39,32 @@ enum PlotAxis {
 impl std::fmt::Display for PlotAxis {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{self:?}")
+    }
+}
+
+pub struct PlotterReceivers {
+    rx_gps: Receiver<Telemetry>,
+    rx_avg: Receiver<Telemetry>,
+    rx_kalman: Receiver<Telemetry>,
+    rx_inertial: Receiver<Telemetry>,
+    rx_groundtruth: Receiver<Telemetry>,
+}
+
+impl PlotterReceivers {
+    pub fn new(
+        rx_gps: Receiver<Telemetry>,
+        rx_avg: Receiver<Telemetry>,
+        rx_kalman: Receiver<Telemetry>,
+        rx_inertial: Receiver<Telemetry>,
+        rx_groundtruth: Receiver<Telemetry>,
+    ) -> PlotterReceivers {
+        PlotterReceivers {
+            rx_gps,
+            rx_avg,
+            rx_kalman,
+            rx_inertial,
+            rx_groundtruth,
+        }
     }
 }
 

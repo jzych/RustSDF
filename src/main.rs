@@ -154,7 +154,7 @@ fn start_static_visualization(
     communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
     communication_registry.register_for_input(DataSource::Groundtruth, tx_groundtruth);
 
-    StaticVisualization::run(PlotterReceivers { rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth}, simulation_start)
+    StaticVisualization::run(PlotterReceivers::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth), simulation_start)
 }
 
 fn start_trajectory_generator(
@@ -192,13 +192,13 @@ fn register_dynamic_plot(
     communication_registry.register_for_input(DataSource::Groundtruth, tx_groundtruth);
 
     (
-        PlotterReceivers {
+        PlotterReceivers::new(
             rx_gps,
             rx_avg,
             rx_kalman,
             rx_inertial,
             rx_groundtruth,
-        },
+        ),
         simulation_start,
     )
 }
