@@ -12,13 +12,12 @@ use crate::{
     config::*,
     data::{Data, Telemetry},
     estimator_builder::EstimatorBuilder,
-    real_time_visualization::{PlotterReceivers, RealTimeVisualization},
     logger::log,
     log_config::*,
     sensor_builder::SensorBuilder,
     trajectory_generator::TrajectoryGeneratorBuilder,
-    visualization::Visualization,
     csv_handler::*,
+    visualization::{PlotterReceivers, real_time_visualization::RealTimeVisualization, static_visualization::StaticVisualization},
 };
 
 use estimators::kalman;
@@ -34,7 +33,6 @@ mod gps;
 mod imu;
 mod log_config;
 mod logger;
-mod real_time_visualization;
 mod sensor_builder;
 mod trajectory_generator;
 mod utils;
@@ -141,7 +139,7 @@ fn start_inertial_navigator(
     }
 }
 
-fn start_visualization(
+fn start_static_visualization(
     communication_registry: &mut CommunicationRegistry,
     simulation_start: SystemTime,
 ) -> JoinHandle<()> {
@@ -156,14 +154,7 @@ fn start_visualization(
     communication_registry.register_for_input(DataSource::InertialNavigator, tx_inertial);
     communication_registry.register_for_input(DataSource::Groundtruth, tx_groundtruth);
 
-    Visualization::run(
-        rx_avg,
-        rx_kalman,
-        rx_gps,
-        rx_inertial,
-        rx_groundtruth,
-        simulation_start,
-    )
+    StaticVisualization::run(PlotterReceivers::new(rx_gps, rx_avg, rx_kalman, rx_inertial, rx_groundtruth), simulation_start)
 }
 
 fn start_trajectory_generator(
@@ -201,13 +192,13 @@ fn register_dynamic_plot(
     communication_registry.register_for_input(DataSource::Groundtruth, tx_groundtruth);
 
     (
-        PlotterReceivers {
+        PlotterReceivers::new(
             rx_gps,
             rx_avg,
             rx_kalman,
             rx_inertial,
             rx_groundtruth,
-        },
+        ),
         simulation_start,
     )
 }
@@ -217,7 +208,7 @@ fn main() -> Result<(), Error> {
     let mut communication_registry = CommunicationRegistry::new();
     let shutdown_trigger = Arc::new(AtomicBool::new(false));
     let (receivers, simulation_start) = register_dynamic_plot(&mut communication_registry);
-    let visu_handle = start_visualization(&mut communication_registry, simulation_start);
+    let static_visu_handle = start_static_visualization(&mut communication_registry, simulation_start);
 
     let (generated_data_handle, generator_handle) =
         start_trajectory_generator(&mut communication_registry, Arc::clone(&shutdown_trigger));
@@ -246,7 +237,7 @@ fn main() -> Result<(), Error> {
     kalman_handle.join().unwrap();
     avg_handle.join().unwrap();
     inertial_navigator_handle.join().unwrap();
-    visu_handle.join().unwrap();
+    static_visu_handle.join().unwrap();
 
     save_logs_to_file();
 
